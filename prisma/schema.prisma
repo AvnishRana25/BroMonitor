@@ -1,0 +1,165 @@
+// BroMonitor — class 11 daily progress tracker (school + coaching)
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Student {
+  id        String   @id @default(cuid())
+  name      String
+  className String   @default("11")
+  board     String   @default("CBSE")
+  school    String?
+  coaching  String?
+  batch     String?
+  createdAt DateTime @default(now())
+}
+
+model Subject {
+  id                    String                  @id @default(cuid())
+  name                  String                  @unique // Physics, Chemistry, Maths
+  short                 String                  @unique // P, C, M
+  color                 String
+  chapters              Chapter[]
+  testScores            TestScore[]
+  doubts                Doubt[]
+  dailyEntries          DailyEntry[]
+  homework              Homework[]
+  upcomingTestSubjects  UpcomingTestSubject[]
+}
+
+model Chapter {
+  id           String       @id @default(cuid())
+  name         String
+  subjectId    String
+  subject      Subject      @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  source       String       @default("both") // school | coaching | both
+  order        Int          @default(0)
+  topics       Topic[]
+  dailyEntries DailyEntry[]
+}
+
+model Topic {
+  id             String    @id @default(cuid())
+  name           String
+  chapterId      String
+  chapter        Chapter   @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  status         String    @default("not_started")
+  // not_started | class_taught | self_studied | problems_done | revised | mastered
+  confidence     Int       @default(0) // 0-5
+  problemsSolved Int       @default(0)
+  mistakes       Int       @default(0)
+  lastRevisedAt  DateTime?
+  nextRevisionAt DateTime?
+  notes          String?
+  updatedAt      DateTime  @updatedAt
+}
+
+model DailyLog {
+  id             String       @id @default(cuid())
+  date           DateTime     @unique
+  schoolHours    Float        @default(0)
+  coachingHours  Float        @default(0)
+  selfStudyHours Float        @default(0)
+  notes          String?
+  createdAt      DateTime     @default(now())
+  entries        DailyEntry[]
+}
+
+model DailyEntry {
+  id             String   @id @default(cuid())
+  dailyLogId     String
+  dailyLog       DailyLog @relation(fields: [dailyLogId], references: [id], onDelete: Cascade)
+  subjectId      String
+  subject        Subject  @relation(fields: [subjectId], references: [id])
+  chapterId      String?
+  chapter        Chapter? @relation(fields: [chapterId], references: [id])
+  source         String // school | coaching | self
+  subTopic       String? // optional free-text (e.g. specific subtopic)
+  problemsSolved Int      @default(0)
+  homeworkDone   Boolean  @default(false)
+  notes          String?
+}
+
+model Test {
+  id         String      @id @default(cuid())
+  date       DateTime
+  name       String
+  type       String // school_unit | school_half_yearly | school_final | coaching_weekly | coaching_part | coaching_full
+  source     String // school | coaching
+  totalMax   Float
+  totalMarks Float
+  rank       Int?
+  percentile Float?
+  notes      String?
+  createdAt  DateTime    @default(now())
+  scores     TestScore[]
+}
+
+model TestScore {
+  id          String  @id @default(cuid())
+  testId      String
+  test        Test    @relation(fields: [testId], references: [id], onDelete: Cascade)
+  subjectId   String
+  subject     Subject @relation(fields: [subjectId], references: [id])
+  marks       Float
+  maxMarks    Float
+  correct     Int     @default(0)
+  wrong       Int     @default(0)
+  unattempted Int     @default(0)
+  weakTopics  String? // comma separated
+}
+
+model UpcomingTest {
+  id              String                @id @default(cuid())
+  name            String
+  date            DateTime
+  type            String // school_unit | school_half_yearly | school_final | coaching_weekly | coaching_part | coaching_full
+  source          String // school | coaching
+  maxMarks        Float?
+  durationMinutes Int?
+  notes           String?
+  preparation     String? // free-form prep plan
+  createdAt       DateTime              @default(now())
+  subjects        UpcomingTestSubject[]
+}
+
+model UpcomingTestSubject {
+  id             String       @id @default(cuid())
+  upcomingTestId String
+  upcomingTest   UpcomingTest @relation(fields: [upcomingTestId], references: [id], onDelete: Cascade)
+  subjectId      String
+  subject        Subject      @relation(fields: [subjectId], references: [id])
+  chapters       String? // comma-separated chapter names included in the syllabus
+}
+
+model Doubt {
+  id         String    @id @default(cuid())
+  raisedAt   DateTime  @default(now())
+  resolvedAt DateTime?
+  subjectId  String
+  subject    Subject   @relation(fields: [subjectId], references: [id])
+  chapter    String?
+  topic      String?
+  question   String
+  resolvedBy String? // teacher | peer | self | online
+  status     String    @default("open") // open | resolved
+}
+
+model Homework {
+  id         String    @id @default(cuid())
+  assignedAt DateTime  @default(now())
+  dueAt      DateTime?
+  source     String // school | coaching
+  subjectId  String
+  subject    Subject   @relation(fields: [subjectId], references: [id])
+  title      String
+  status     String    @default("pending") // pending | in_progress | done | submitted
+  score      Float?
+  maxScore   Float?
+  notes      String?
+}

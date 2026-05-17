@@ -39,10 +39,18 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  // Signed-in users should not see the unlock screen.
   if (role && isPublic) {
     const url = req.nextUrl.clone();
     url.pathname = "/";
     url.search = "";
+    return NextResponse.redirect(url);
+  }
+
+  // Visiting the site root without a session always goes to unlock first.
+  if (!role && pathname === "/") {
+    const url = req.nextUrl.clone();
+    url.pathname = "/unlock";
     return NextResponse.redirect(url);
   }
 

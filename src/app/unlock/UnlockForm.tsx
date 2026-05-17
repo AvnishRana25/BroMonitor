@@ -45,7 +45,7 @@ export function UnlockForm({ configured, from }: Props) {
           <div>
             <div className="text-lg font-semibold leading-none">BroMonitor</div>
             <div className="text-xs text-ink-faint mt-1">
-              Pick who you are. Enter the PIN.
+              Pick who you are, then enter your PIN.
             </div>
           </div>
         </div>
@@ -70,13 +70,13 @@ export function UnlockForm({ configured, from }: Props) {
                     ? "border-accent bg-accent/10"
                     : "border-border bg-bg-soft hover:bg-bg-hover")
                 }
-                title={
-                  enabled
-                    ? meta.subtitle
-                    : `No PIN set. Add PIN_${r.toUpperCase()} to .env`
-                }
+                title={enabled ? meta.subtitle : "Not available"}
               >
-                <div className={"text-sm font-medium " + (isActive ? meta.tone : "")}>
+                <div
+                  className={
+                    "text-sm font-medium " + (isActive ? meta.tone : "")
+                  }
+                >
                   {meta.label}
                 </div>
                 <div className="text-[10px] text-ink-faint mt-0.5 leading-snug">
@@ -123,14 +123,6 @@ export function UnlockForm({ configured, from }: Props) {
             )}
           </button>
         </form>
-
-        <div className="mt-5 text-[11px] text-ink-faint leading-relaxed">
-          PINs are set in <code className="text-ink-dim">.env</code> as{" "}
-          <code className="text-ink-dim">PIN_STUDENT</code>,{" "}
-          <code className="text-ink-dim">PIN_GUARDIAN</code>,{" "}
-          <code className="text-ink-dim">PIN_ADMIN</code>. Restart the dev server
-          after changing them.
-        </div>
       </div>
     </div>
   );

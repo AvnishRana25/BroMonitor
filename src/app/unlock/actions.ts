@@ -33,21 +33,19 @@ export async function unlock(
   const role = roleRaw as Role;
 
   if (!isPinConfigured(role)) {
-    return {
-      error: `No PIN configured for ${role}. Set PIN_${role.toUpperCase()} in .env`,
-    };
+    return { error: "This role is not available. Try another." };
   }
   if (!verifyPin(role, pin)) {
     return { error: "Wrong PIN." };
   }
 
-  const { value, maxAge } = await createSessionCookieValue(role);
+  const { value } = await createSessionCookieValue(role);
+  // Session cookie (no maxAge) — closing the browser requires PIN again.
   cookies().set(SESSION_COOKIE, value, {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
     path: "/",
-    maxAge,
   });
 
   redirect(isSafeRedirect(from) ? from : "/");

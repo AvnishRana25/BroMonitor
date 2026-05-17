@@ -84,7 +84,7 @@ export default async function NewDailyLogPage({
         existingPhotos={
           existing?.photos.map((p) => ({
             id: p.id,
-            url: photoUrl(p.id),
+            url: p.url ?? photoUrl(p.id),
           })) ?? []
         }
         initialDailyLogId={existing?.id ?? null}

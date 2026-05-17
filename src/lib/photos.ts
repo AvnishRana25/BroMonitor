@@ -17,8 +17,9 @@
 import "server-only";
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { Readable } from "node:stream";
 import { createHash } from "node:crypto";
-import { v2 as cloudinary } from "cloudinary";
+import { v2 as cloudinary, type UploadApiResponse } from "cloudinary";
 
 const ROOT = process.env.PHOTO_DIR
   ? path.resolve(process.env.PHOTO_DIR)
@@ -68,6 +69,23 @@ function ensureCloudinary() {
   cloudinaryConfigured = true;
 }
 
+function uploadBufferToCloudinary(
+  buf: Buffer,
+  options: Record<string, unknown>,
+): Promise<UploadApiResponse> {
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      options,
+      (err, result) => {
+        if (err) reject(err);
+        else if (!result) reject(new Error("Cloudinary returned no result."));
+        else resolve(result);
+      },
+    );
+    Readable.from(buf).pipe(stream);
+  });
+}
+
 export type StoredPhoto = {
   publicId: string | null;
   url: string | null;
@@ -109,12 +127,10 @@ export async function savePhotoBytes(
   if (isCloudinaryConfigured()) {
     ensureCloudinary();
     const folder = opts.folder ?? "bromonitor/evidence";
-    const dataUri = `data:${mime};base64,${buf.toString("base64")}`;
-    const res = await cloudinary.uploader.upload(dataUri, {
+    const res = await uploadBufferToCloudinary(buf, {
       folder,
       resource_type: "image",
       overwrite: false,
-      // Auto-orient and strip EXIF — phones often upload sideways.
       transformation: [{ quality: "auto", fetch_format: "auto" }],
     });
     return {
@@ -180,12 +196,10 @@ export async function uploadDoubtImage(
   }
   ensureCloudinary();
   const buf = Buffer.from(bytes);
-  const dataUri = `data:${mime};base64,${buf.toString("base64")}`;
-  const res = await cloudinary.uploader.upload(dataUri, {
+  const res = await uploadBufferToCloudinary(buf, {
     folder: "bromonitor/doubts",
     resource_type: "image",
     overwrite: false,
-    // Preserve legibility of printed/handwritten numbers for Gemini Vision.
     transformation: [{ quality: "auto:good", fetch_format: "auto" }],
   });
   return {

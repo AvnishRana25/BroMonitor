@@ -8,25 +8,16 @@ import {
 } from "@/lib/photos";
 import { can, currentRole } from "@/lib/session";
 import type { Role } from "@/lib/auth";
+import type { ParsedUpload } from "@/lib/formUpload";
 
 export type EvidenceUploadResult =
   | { ok: true; id: string; url: string }
   | { ok: false; error: string; status?: number };
 
-function mimeFor(file: File): string {
-  if (file.type && file.type.startsWith("image/")) return file.type;
-  const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
-  if (ext === "png") return "image/png";
-  if (ext === "webp") return "image/webp";
-  if (ext === "gif") return "image/gif";
-  if (ext === "heic" || ext === "heif") return "image/heic";
-  return "image/jpeg";
-}
-
 /** Core evidence upload — safe to call from Route Handlers (not a Server Action). */
 export async function uploadOneEvidencePhoto(
   dailyLogId: string,
-  file: File,
+  upload: ParsedUpload,
 ): Promise<EvidenceUploadResult> {
   const role = await currentRole();
   if (!role) {
@@ -39,7 +30,7 @@ export async function uploadOneEvidencePhoto(
   const log = await prisma.dailyLog.findUnique({ where: { id: dailyLogId } });
   if (!log) return { ok: false, error: "Daily log not found.", status: 404 };
 
-  if (!(file instanceof File) || !file.size) {
+  if (!upload.size) {
     return { ok: false, error: "No photo in request.", status: 400 };
   }
 
@@ -53,9 +44,7 @@ export async function uploadOneEvidencePhoto(
   }
 
   try {
-    const bytes = await file.arrayBuffer();
-    const mime = mimeFor(file);
-    const stored = await savePhotoBytes(bytes, mime, {
+    const stored = await savePhotoBytes(upload.bytes, upload.mime, {
       folder: "bromonitor/evidence",
     });
     const photo = await prisma.photo.create({
@@ -69,7 +58,8 @@ export async function uploadOneEvidencePhoto(
         sha256: stored.sha,
       },
     });
-    return { ok: true, id: photo.id, url: `/api/photos/${photo.id}` };
+    const displayUrl = stored.url ?? `/api/photos/${photo.id}`;
+    return { ok: true, id: photo.id, url: displayUrl };
   } catch (e) {
     if (e instanceof PhotoValidationError) {
       return { ok: false, error: e.message, status: 400 };

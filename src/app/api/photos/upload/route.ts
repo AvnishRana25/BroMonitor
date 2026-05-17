@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { uploadOneEvidencePhoto } from "@/lib/evidenceUpload";
+import { readFormUpload } from "@/lib/formUpload";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,14 +23,14 @@ export async function POST(req: Request) {
         { status: 400 },
       );
     }
-    const file = formData.get("photo");
-    if (!(file instanceof File)) {
+    const upload = await readFormUpload(formData.get("photo"), "evidence.jpg");
+    if (!upload) {
       return NextResponse.json(
         { ok: false, error: "No photo in request." },
         { status: 400 },
       );
     }
-    const result = await uploadOneEvidencePhoto(dailyLogId, file);
+    const result = await uploadOneEvidencePhoto(dailyLogId, upload);
     if (result.ok) {
       revalidatePhotoPaths();
     }

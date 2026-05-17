@@ -5,6 +5,10 @@ import { SESSION_COOKIE, parseSessionCookie } from "@/lib/auth";
 // /unlock is the only public page; everything else redirects there.
 const PUBLIC_PATHS = ["/unlock"];
 
+function isApiRoute(pathname: string): boolean {
+  return pathname.startsWith("/api/") && !pathname.startsWith("/api/cron/");
+}
+
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const isPublic = PUBLIC_PATHS.some(
@@ -21,6 +25,13 @@ export async function middleware(req: NextRequest) {
   const role = await parseSessionCookie(cookie);
 
   if (!role && !isPublic) {
+    // API clients expect JSON — never redirect uploads to the unlock HTML page.
+    if (isApiRoute(pathname)) {
+      return NextResponse.json(
+        { ok: false, error: "Not signed in. Open /unlock and sign in again." },
+        { status: 401 },
+      );
+    }
     const url = req.nextUrl.clone();
     url.pathname = "/unlock";
     const dest = pathname + (req.nextUrl.search || "");

@@ -6,6 +6,7 @@ import {
   isCloudinaryConfigured,
   uploadDoubtImage,
 } from "@/lib/photos";
+import { readFormUpload } from "@/lib/formUpload";
 import { can, currentRole } from "@/lib/session";
 
 const MAX_QUESTION_LEN = 2000;
@@ -15,15 +16,6 @@ const MAX_TOPIC_LEN = 200;
 export type CreateDoubtResult =
   | { ok: true; id: string }
   | { ok: false; error: string; status?: number };
-
-function mimeFor(file: File): string {
-  if (file.type && file.type.startsWith("image/")) return file.type;
-  const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
-  if (ext === "png") return "image/png";
-  if (ext === "webp") return "image/webp";
-  if (ext === "heic" || ext === "heif") return "image/heic";
-  return "image/jpeg";
-}
 
 /** Core doubt create — safe to call from Route Handlers (not a Server Action). */
 export async function createDoubtFromFormData(
@@ -39,8 +31,8 @@ export async function createDoubtFromFormData(
 
   const subjectId = ((formData.get("subjectId") as string) || "").trim();
   const question = ((formData.get("question") as string) || "").trim();
-  const imageFile = formData.get("image");
-  const hasImage = imageFile instanceof File && imageFile.size > 0;
+  const imageUpload = await readFormUpload(formData.get("image"), "doubt.jpg");
+  const hasImage = !!imageUpload;
 
   if (!subjectId) {
     return { ok: false, error: "Pick a subject.", status: 400 };
@@ -81,9 +73,7 @@ export async function createDoubtFromFormData(
       };
     }
     try {
-      const file = imageFile as File;
-      const bytes = await file.arrayBuffer();
-      const up = await uploadDoubtImage(bytes, mimeFor(file));
+      const up = await uploadDoubtImage(imageUpload!.bytes, imageUpload!.mime);
       imagePublicId = up.publicId;
       imageUrl = up.url;
       imageMime = up.mime;

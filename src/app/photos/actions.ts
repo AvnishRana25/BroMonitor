@@ -10,6 +10,7 @@ import {
   savePhotoBytes,
 } from "@/lib/photos";
 import { uploadOneEvidencePhoto } from "@/lib/evidenceUpload";
+import { readFormUpload } from "@/lib/formUpload";
 
 function revalidatePhotoPaths() {
   revalidatePath("/daily");
@@ -44,11 +45,11 @@ export async function uploadDailyPhoto(
   | { ok: true; id: string; url: string }
   | { ok: false; error: string }
 > {
-  const file = formData.get("photo");
-  if (!(file instanceof File)) {
+  const upload = await readFormUpload(formData.get("photo"), "evidence.jpg");
+  if (!upload) {
     return { ok: false, error: "No photo in request." };
   }
-  const result = await uploadOneEvidencePhoto(dailyLogId, file);
+  const result = await uploadOneEvidencePhoto(dailyLogId, upload);
   if (result.ok) revalidatePhotoPaths();
   return result;
 }

@@ -6,11 +6,13 @@ import { SubjectPill } from "@/components/SubjectPill";
 import { EmptyState } from "@/components/EmptyState";
 import { DeleteTestButton } from "./DeleteTestButton";
 import { DeleteUpcomingTestButton } from "./DeleteUpcomingTestButton";
+import { TestBriefPanel } from "@/components/TestBriefPanel";
+import { isGeminiConfigured } from "@/lib/ai/gemini";
 
 export default async function TestsPage() {
   const today = startOfDay(new Date());
 
-  const [tests, upcoming] = await Promise.all([
+  const [tests, upcoming, briefs] = await Promise.all([
     prisma.test.findMany({
       orderBy: { date: "desc" },
       include: { scores: { include: { subject: true } } },
@@ -20,7 +22,10 @@ export default async function TestsPage() {
       orderBy: { date: "asc" },
       include: { subjects: { include: { subject: true } } },
     }),
+    prisma.aiReport.findMany({ where: { kind: "test_brief" } }),
   ]);
+  const briefByTest = new Map(briefs.map((b) => [b.scopeKey, b]));
+  const geminiOn = isGeminiConfigured();
 
   return (
     <div className="space-y-6">
@@ -62,8 +67,8 @@ export default async function TestsPage() {
               const days = Math.max(
                 0,
                 Math.ceil(
-                  (u.date.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
-                )
+                  (u.date.getTime() - today.getTime()) / (1000 * 60 * 60 * 24),
+                ),
               );
               const typeLabel =
                 TEST_TYPES.find((t) => t.value === u.type)?.label ?? u.type;
@@ -91,8 +96,8 @@ export default async function TestsPage() {
                           days <= 2
                             ? "text-bad border-bad/40 bg-bad/10"
                             : days <= 7
-                            ? "text-warn border-warn/40 bg-warn/10"
-                            : ""
+                              ? "text-warn border-warn/40 bg-warn/10"
+                              : ""
                         }`}
                       >
                         {days === 0 ? "Today" : `in ${days}d`}
@@ -139,6 +144,23 @@ export default async function TestsPage() {
                       {u.notes}
                     </div>
                   )}
+
+                  <TestBriefPanel
+                    upcomingTestId={u.id}
+                    daysAway={days}
+                    existing={
+                      briefByTest.has(u.id)
+                        ? {
+                            id: briefByTest.get(u.id)!.id,
+                            body: briefByTest.get(u.id)!.body,
+                            generatedAt:
+                              briefByTest.get(u.id)!.generatedAt.toISOString(),
+                            model: briefByTest.get(u.id)!.model,
+                          }
+                        : null
+                    }
+                    geminiConfigured={geminiOn}
+                  />
                 </div>
               );
             })}
@@ -181,9 +203,7 @@ export default async function TestsPage() {
                         {fmtDate(t.date, true)} · {t.totalMarks}/{t.totalMax} (
                         {overall}%)
                         {t.rank ? ` · Rank ${t.rank}` : ""}
-                        {t.percentile != null
-                          ? ` · ${t.percentile}%ile`
-                          : ""}
+                        {t.percentile != null ? ` · ${t.percentile}%ile` : ""}
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
@@ -192,8 +212,8 @@ export default async function TestsPage() {
                           overall >= 80
                             ? "text-good"
                             : overall >= 60
-                            ? "text-warn"
-                            : "text-bad"
+                              ? "text-warn"
+                              : "text-bad"
                         }`}
                       >
                         {overall}%

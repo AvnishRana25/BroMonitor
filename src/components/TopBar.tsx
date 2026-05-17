@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -10,15 +10,21 @@ import {
   GraduationCap,
   HelpCircle,
   LayoutDashboard,
+  Lock,
   Menu,
+  Siren,
+  Sparkles,
+  Target,
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ROLE_META, Role } from "@/lib/auth";
+import { lock } from "@/app/unlock/actions";
 
 const titles: Record<string, { title: string; sub: string }> = {
   "/": { title: "Dashboard", sub: "Today at a glance" },
   "/daily": { title: "Daily log", sub: "What he studied each day" },
-  "/daily/new": { title: "Add log", sub: "Log today's study" },
+  "/daily/new": { title: "Add log", sub: "Log study + snap evidence photos" },
   "/subjects": { title: "Subjects", sub: "Chapter-wise progress" },
   "/tests": { title: "Tests", sub: "Past results and upcoming tests" },
   "/tests/new": { title: "Log a test", sub: "Record marks and breakdown" },
@@ -27,31 +33,50 @@ const titles: Record<string, { title: string; sub: string }> = {
     sub: "Plan revision around upcoming exams",
   },
   "/doubts": { title: "Doubts", sub: "Open questions to resolve" },
+  "/alerts": { title: "Alerts", sub: "Rule-engine output — facts, not vibes" },
+  "/plan": { title: "Weekly plan", sub: "Targets to measure actual against" },
+  "/reports": { title: "AI reports", sub: "Weekly, monthly and pre-test briefs" },
 };
 
-const mobileNav = [
+type NavItem = {
+  href: string;
+  label: string;
+  icon: typeof LayoutDashboard;
+  roles?: Role[];
+};
+
+const mobileNav: NavItem[] = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/daily", label: "Daily log", icon: CalendarDays },
   { href: "/subjects", label: "Subjects", icon: BookOpenCheck },
   { href: "/tests", label: "Tests", icon: ClipboardList },
   { href: "/doubts", label: "Doubts", icon: HelpCircle },
+  { href: "/alerts", label: "Alerts", icon: Siren, roles: ["guardian", "admin"] },
+  { href: "/plan", label: "Weekly plan", icon: Target, roles: ["guardian", "admin"] },
+  { href: "/reports", label: "AI reports", icon: Sparkles, roles: ["guardian", "admin"] },
 ];
 
-export function TopBar({ studentName }: { studentName: string }) {
+export function TopBar({
+  studentName,
+  role,
+}: {
+  studentName: string;
+  role: Role;
+}) {
   const pathname = usePathname();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [pending, start] = useTransition();
+  const meta = ROLE_META[role];
 
   const key = Object.keys(titles)
     .filter((k) => k === pathname || (k !== "/" && pathname.startsWith(k)))
     .sort((a, b) => b.length - a.length)[0];
-  const meta = titles[key] ?? titles["/"];
+  const pageMeta = titles[key] ?? titles["/"];
 
-  // Close the drawer whenever the route changes.
   useEffect(() => {
     setDrawerOpen(false);
   }, [pathname]);
 
-  // Prevent body scroll when drawer is open.
   useEffect(() => {
     if (typeof document === "undefined") return;
     document.body.style.overflow = drawerOpen ? "hidden" : "";
@@ -59,6 +84,8 @@ export function TopBar({ studentName }: { studentName: string }) {
       document.body.style.overflow = "";
     };
   }, [drawerOpen]);
+
+  const items = mobileNav.filter((n) => !n.roles || n.roles.includes(role));
 
   return (
     <header className="border-b border-border bg-bg-soft/60 backdrop-blur sticky top-0 z-20">
@@ -73,20 +100,42 @@ export function TopBar({ studentName }: { studentName: string }) {
         </button>
         <div className="flex-1 min-w-0">
           <div className="text-lg font-semibold tracking-tight truncate">
-            {meta.title}
+            {pageMeta.title}
           </div>
           <div className="text-xs text-ink-faint mt-0.5 truncate">
-            {meta.sub}
+            {pageMeta.sub}
           </div>
         </div>
         <div className="flex items-center gap-3">
           <div className="text-right hidden sm:block">
-            <div className="text-xs text-ink-faint">Tracking</div>
-            <div className="text-sm font-medium">{studentName}</div>
+            <div className="text-[10px] text-ink-faint uppercase tracking-wide">
+              Signed in as
+            </div>
+            <div className={cn("text-sm font-medium leading-tight", meta.tone)}>
+              {meta.label}
+            </div>
           </div>
-          <div className="w-9 h-9 rounded-full bg-accent/20 text-accent flex items-center justify-center text-sm font-semibold shrink-0">
+          <div
+            className={cn(
+              "w-9 h-9 rounded-full bg-accent/20 text-accent flex items-center justify-center text-sm font-semibold shrink-0"
+            )}
+            title={`Tracking ${studentName}`}
+          >
             {studentName?.[0]?.toUpperCase() ?? "B"}
           </div>
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() =>
+              start(() => {
+                void lock();
+              })
+            }
+            title="Lock"
+            className="p-2 rounded-lg text-ink-dim hover:text-ink hover:bg-bg-hover transition disabled:opacity-50"
+          >
+            <Lock className="w-4 h-4" />
+          </button>
         </div>
       </div>
 
@@ -120,7 +169,7 @@ export function TopBar({ studentName }: { studentName: string }) {
               </button>
             </div>
             <nav className="flex-1 px-3 py-4 space-y-1">
-              {mobileNav.map((n) => {
+              {items.map((n) => {
                 const active =
                   pathname === n.href ||
                   (n.href !== "/" && pathname.startsWith(n.href));
@@ -142,8 +191,23 @@ export function TopBar({ studentName }: { studentName: string }) {
                 );
               })}
             </nav>
-            <div className="px-5 py-4 border-t border-border text-[11px] text-ink-faint">
-              Tracking {studentName}
+            <div className="px-5 py-4 border-t border-border text-[11px] text-ink-faint flex items-center justify-between">
+              <span>
+                Signed in as{" "}
+                <span className={cn("font-medium", meta.tone)}>{meta.label}</span>
+              </span>
+              <button
+                type="button"
+                disabled={pending}
+                onClick={() =>
+                  start(() => {
+                    void lock();
+                  })
+                }
+                className="text-ink-dim hover:text-ink"
+              >
+                Lock
+              </button>
             </div>
           </aside>
         </div>

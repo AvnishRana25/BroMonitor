@@ -37,6 +37,36 @@ export function daysAgo(n: number) {
   return d;
 }
 
+// Monday-of-week, local midnight. JEE prep aligns with school weeks (Mon-Sun),
+// and Indian timezone makes a US-style Sunday-start awkward. Pick Mon and move on.
+export function weekStart(d: Date = new Date()): Date {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  const day = x.getDay(); // 0=Sun..6=Sat
+  const diff = day === 0 ? -6 : 1 - day;
+  x.setDate(x.getDate() + diff);
+  return x;
+}
+
+export function addDays(d: Date, n: number): Date {
+  const x = new Date(d);
+  x.setDate(x.getDate() + n);
+  return x;
+}
+
+export function fmtRelative(date: Date): string {
+  const diffMs = Date.now() - date.getTime();
+  const sec = Math.floor(diffMs / 1000);
+  if (sec < 60) return "just now";
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const day = Math.floor(hr / 24);
+  if (day < 7) return `${day}d ago`;
+  return fmtDate(date);
+}
+
 // Local YYYY-MM-DD string for <input type="date"> defaults and URL params.
 // Avoids the Date.toISOString() pitfall that uses UTC and returns yesterday
 // late at night in non-UTC timezones (e.g. IST).

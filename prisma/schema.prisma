@@ -30,17 +30,20 @@ model Subject {
   dailyEntries          DailyEntry[]
   homework              Homework[]
   upcomingTestSubjects  UpcomingTestSubject[]
+  studyPlanEntries      StudyPlanSubject[]
 }
 
 model Chapter {
-  id           String       @id @default(cuid())
-  name         String
-  subjectId    String
-  subject      Subject      @relation(fields: [subjectId], references: [id], onDelete: Cascade)
-  source       String       @default("both") // school | coaching | both
-  order        Int          @default(0)
-  topics       Topic[]
-  dailyEntries DailyEntry[]
+  id            String         @id @default(cuid())
+  name          String
+  subjectId     String
+  subject       Subject        @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  source        String         @default("both") // school | coaching | both
+  order         Int            @default(0)
+  topics        Topic[]
+  dailyEntries  DailyEntry[]
+
+  @@index([subjectId])
 }
 
 model Topic {
@@ -57,17 +60,144 @@ model Topic {
   nextRevisionAt DateTime?
   notes          String?
   updatedAt      DateTime  @updatedAt
+  dailyEntries   DailyEntry[] @relation("DailyEntryTopic")
+
+  @@index([chapterId])
+  @@index([status])
+  @@index([updatedAt]) // weekly/monthly report "topics moved this week" query
 }
 
 model DailyLog {
-  id             String       @id @default(cuid())
-  date           DateTime     @unique
-  schoolHours    Float        @default(0)
-  coachingHours  Float        @default(0)
-  selfStudyHours Float        @default(0)
+  id             String           @id @default(cuid())
+  date           DateTime         @unique
+  schoolHours    Float            @default(0)
+  coachingHours  Float            @default(0)
+  selfStudyHours Float            @default(0)
+  sleepHours     Float?
+  energy         Int? // 1-5
   notes          String?
-  createdAt      DateTime     @default(now())
+  createdAt      DateTime         @default(now())
   entries        DailyEntry[]
+  reflection     DailyReflection?
+  photos         Photo[]
+}
+
+model DailyReflection {
+  id            String   @id @default(cuid())
+  dailyLogId    String   @unique
+  dailyLog      DailyLog @relation(fields: [dailyLogId], references: [id], onDelete: Cascade)
+  learned       String?
+  confused      String?
+  hardestSolved String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+// Father's weekly contract with the brother. One row per week (Monday-start).
+// Comparing this against the week's DailyLog totals is what powers the
+// Planned vs Actual strip on the dashboard.
+model StudyPlan {
+  id                    String             @id @default(cuid())
+  weekStart             DateTime           @unique // Monday 00:00 local
+  totalHoursGoal        Float?
+  testsGoal             Int                @default(0)
+  revisionSessionsGoal  Int                @default(0)
+  notes                 String?
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+  subjects              StudyPlanSubject[]
+}
+
+model StudyPlanSubject {
+  id           String    @id @default(cuid())
+  studyPlanId  String
+  studyPlan    StudyPlan @relation(fields: [studyPlanId], references: [id], onDelete: Cascade)
+  subjectId    String
+  subject      Subject   @relation(fields: [subjectId], references: [id])
+  hoursGoal    Float     @default(0)
+
+  @@unique([studyPlanId, subjectId])
+}
+
+// Father's notes. Either dangling (general encouragement / criticism) or
+// scoped to a particular day / test / subject / chapter. Brother sees them
+// inline so the dashboard becomes a two-way artifact, not just surveillance.
+model GuardianComment {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  authorRole String  // guardian | admin
+  scope     String   // day | test | subject | chapter | general
+  scopeId   String?  // dailyLogId / testId / subjectId / chapterId — null for general
+  scopeDate DateTime? // for day-scoped, the date being commented on
+  body      String
+}
+
+// Rules-engine output. The evaluator upserts by dedupeKey so the same ongoing
+// condition (e.g. "no physics in 5 days") doesn't pile up duplicate rows on
+// every dashboard render. When the underlying condition stops triggering, the
+// alert is marked resolvedAt; if it triggers again later we clear resolvedAt
+// and the acknowledgement so it re-appears in father's queue.
+model Alert {
+  id             String    @id @default(cuid())
+  kind           String    // 'no_recent_study' | 'test_declining' | ...
+  severity       String    // info | warn | red
+  dedupeKey      String    @unique
+  title          String
+  body           String
+  suggestion     String?
+  payload        String?   // JSON blob, rule-specific
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  acknowledgedAt DateTime?
+  acknowledgedBy String?   // role label
+  resolvedAt     DateTime?
+
+  // The dashboard filters by (resolvedAt is null, acknowledgedAt is null)
+  // every single render. Sparse but worth it as Alert grows.
+  @@index([resolvedAt, acknowledgedAt])
+}
+
+// Admin-dismissed alerts: suppresses a dedupeKey so the rules engine won't recreate it.
+model AlertDismissal {
+  dedupeKey    String   @id
+  dismissedAt  DateTime @default(now())
+  dismissedBy  String   // role label
+}
+
+// Gemini-generated narrative reports.
+// kind: "weekly" | "monthly" | "test_brief"
+// scopeKey: weekStart ISO date (weekly), "YYYY-MM" (monthly), testId (brief).
+model AiReport {
+  id         String   @id @default(cuid())
+  kind       String
+  scopeKey   String
+  title      String
+  body       String   // markdown / plain-text
+  metadata   String?  // JSON: structured data the prompt was built from
+  model      String?  // gemini model used
+  tokensIn   Int?
+  tokensOut  Int?
+  generatedAt DateTime @default(now())
+  emailedAt  DateTime?
+  emailedTo  String?
+
+  @@unique([kind, scopeKey])
+  // The /reports page orders by generatedAt desc; the tabs filter by kind.
+  @@index([kind, generatedAt])
+}
+
+// Photo evidence attached to a daily log (notebook pages, solved problems).
+model Photo {
+  id         String   @id @default(cuid())
+  dailyLogId String
+  dailyLog   DailyLog @relation(fields: [dailyLogId], references: [id], onDelete: Cascade)
+  filename   String
+  mime       String
+  size       Int
+  sha256     String
+  createdAt  DateTime @default(now())
+
+  @@index([dailyLogId])
 }
 
 model DailyEntry {
@@ -78,11 +208,17 @@ model DailyEntry {
   subject        Subject  @relation(fields: [subjectId], references: [id])
   chapterId      String?
   chapter        Chapter? @relation(fields: [chapterId], references: [id])
+  topicId        String?
+  topic          Topic?   @relation("DailyEntryTopic", fields: [topicId], references: [id])
   source         String // school | coaching | self
-  subTopic       String? // optional free-text (e.g. specific subtopic)
+  subTopic       String? // free-text when topic not in syllabus list
   problemsSolved Int      @default(0)
   homeworkDone   Boolean  @default(false)
   notes          String?
+
+  @@index([dailyLogId])
+  @@index([subjectId])
+  @@index([chapterId])
 }
 
 model Test {
@@ -98,6 +234,8 @@ model Test {
   notes      String?
   createdAt  DateTime    @default(now())
   scores     TestScore[]
+
+  @@index([date])
 }
 
 model TestScore {
@@ -126,6 +264,8 @@ model UpcomingTest {
   preparation     String? // free-form prep plan
   createdAt       DateTime              @default(now())
   subjects        UpcomingTestSubject[]
+
+  @@index([date])
 }
 
 model UpcomingTestSubject {
@@ -138,16 +278,23 @@ model UpcomingTestSubject {
 }
 
 model Doubt {
-  id         String    @id @default(cuid())
-  raisedAt   DateTime  @default(now())
-  resolvedAt DateTime?
-  subjectId  String
-  subject    Subject   @relation(fields: [subjectId], references: [id])
-  chapter    String?
-  topic      String?
-  question   String
-  resolvedBy String? // teacher | peer | self | online
-  status     String    @default("open") // open | resolved
+  id            String    @id @default(cuid())
+  raisedAt      DateTime  @default(now())
+  resolvedAt    DateTime?
+  subjectId     String
+  subject       Subject   @relation(fields: [subjectId], references: [id])
+  chapter       String?
+  topic         String?
+  question      String
+  resolvedBy    String? // teacher | peer | self | online | ai
+  status        String    @default("open") // open | resolved
+  aiAnswer      String?
+  aiConfident   Boolean?  // false = Gemini flagged low confidence
+  aiAnsweredAt  DateTime?
+  aiModel       String?
+
+  @@index([status, raisedAt])
+  @@index([subjectId])
 }
 
 model Homework {
@@ -162,4 +309,7 @@ model Homework {
   score      Float?
   maxScore   Float?
   notes      String?
+
+  @@index([status, dueAt])
+  @@index([subjectId])
 }

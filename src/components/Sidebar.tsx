@@ -9,19 +9,35 @@ import {
   ClipboardList,
   HelpCircle,
   GraduationCap,
+  Siren,
+  Sparkles,
+  Target,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ROLE_META, Role } from "@/lib/auth";
 
-const nav = [
+type NavItem = {
+  href: string;
+  label: string;
+  icon: typeof LayoutDashboard;
+  roles?: Role[];
+};
+
+const nav: NavItem[] = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/daily", label: "Daily log", icon: CalendarDays },
   { href: "/subjects", label: "Subjects", icon: BookOpenCheck },
   { href: "/tests", label: "Tests", icon: ClipboardList },
   { href: "/doubts", label: "Doubts", icon: HelpCircle },
+  { href: "/alerts", label: "Alerts", icon: Siren, roles: ["guardian", "admin"] },
+  { href: "/plan", label: "Weekly plan", icon: Target, roles: ["guardian", "admin"] },
+  { href: "/reports", label: "AI reports", icon: Sparkles, roles: ["guardian", "admin"] },
 ];
 
-export function Sidebar() {
+export function Sidebar({ role }: { role: Role }) {
   const pathname = usePathname();
+  const meta = ROLE_META[role];
+  const items = nav.filter((n) => !n.roles || n.roles.includes(role));
   return (
     <aside className="w-60 shrink-0 border-r border-border bg-bg-soft hidden md:flex flex-col">
       <div className="flex items-center gap-2 px-5 py-5 border-b border-border">
@@ -34,7 +50,7 @@ export function Sidebar() {
         </div>
       </div>
       <nav className="flex-1 px-3 py-4 space-y-1">
-        {nav.map((n) => {
+        {items.map((n) => {
           const active = pathname === n.href || (n.href !== "/" && pathname.startsWith(n.href));
           const Icon = n.icon;
           return (
@@ -55,7 +71,8 @@ export function Sidebar() {
         })}
       </nav>
       <div className="px-5 py-4 border-t border-border text-[11px] text-ink-faint">
-        Built for guardians.
+        Signed in as{" "}
+        <span className={cn("font-medium", meta.tone)}>{meta.label}</span>
       </div>
     </aside>
   );

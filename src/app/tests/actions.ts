@@ -2,8 +2,10 @@
 
 import { prisma } from "@/lib/db";
 import { revalidatePath } from "next/cache";
+import { requireRole } from "@/lib/session";
 
 export async function createTest(formData: FormData) {
+  await requireRole(["student", "admin"]);
   const name = (formData.get("name") as string).trim();
   const dateStr = formData.get("date") as string;
   const type = formData.get("type") as string;
@@ -71,16 +73,18 @@ export async function createTest(formData: FormData) {
 }
 
 export async function deleteTest(id: string) {
+  await requireRole(["admin"]);
   await prisma.test.delete({ where: { id } });
   revalidatePath("/tests");
   revalidatePath("/");
 }
 
 export async function createUpcomingTest(formData: FormData) {
-  const name = (formData.get("name") as string).trim();
-  const dateStr = formData.get("date") as string;
-  const type = formData.get("type") as string;
-  const source = formData.get("source") as string;
+  await requireRole(["student", "admin"]);
+  const name = ((formData.get("name") as string) || "").trim();
+  const dateStr = ((formData.get("date") as string) || "").trim();
+  const type = ((formData.get("type") as string) || "").trim();
+  const source = ((formData.get("source") as string) || "").trim();
   const maxMarks = formData.get("maxMarks")
     ? Number(formData.get("maxMarks"))
     : null;
@@ -90,6 +94,23 @@ export async function createUpcomingTest(formData: FormData) {
   const notes = ((formData.get("notes") as string) || "").trim() || null;
   const preparation =
     ((formData.get("preparation") as string) || "").trim() || null;
+
+  if (!name || !dateStr || !type || !source) {
+    throw new Error("Name, date, type and source are required.");
+  }
+  const parsedDate = new Date(dateStr);
+  if (Number.isNaN(parsedDate.getTime())) {
+    throw new Error(`Invalid test date "${dateStr}".`);
+  }
+  if (maxMarks != null && (!Number.isFinite(maxMarks) || maxMarks < 0)) {
+    throw new Error("Max marks must be a non-negative number.");
+  }
+  if (
+    durationMinutes != null &&
+    (!Number.isFinite(durationMinutes) || durationMinutes < 0)
+  ) {
+    throw new Error("Duration must be a non-negative number of minutes.");
+  }
 
   const subjects = await prisma.subject.findMany({
     include: { chapters: true },
@@ -113,7 +134,7 @@ export async function createUpcomingTest(formData: FormData) {
   await prisma.upcomingTest.create({
     data: {
       name,
-      date: new Date(dateStr),
+      date: parsedDate,
       type,
       source,
       maxMarks,
@@ -129,6 +150,7 @@ export async function createUpcomingTest(formData: FormData) {
 }
 
 export async function deleteUpcomingTest(id: string) {
+  await requireRole(["admin"]);
   await prisma.upcomingTest.delete({ where: { id } });
   revalidatePath("/tests");
   revalidatePath("/");

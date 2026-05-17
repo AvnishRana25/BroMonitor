@@ -1,17 +1,18 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
-import { StatCard } from "@/components/StatCard";
 import { SubjectPill } from "@/components/SubjectPill";
 import {
-  Clock,
-  Flame,
-  ClipboardList,
-  HelpCircle,
-  TrendingUp,
-  Target,
   BookOpen,
   CalendarClock,
+  Camera,
+  Clock,
+  MessageSquare,
+  Siren,
+  Sparkles,
+  Target,
+  TrendingUp,
 } from "lucide-react";
+import { currentRole, can } from "@/lib/session";
 import {
   avgProgressPct,
   daysAgo,
@@ -19,15 +20,43 @@ import {
   pct,
   startOfDay,
   toDateInputValue,
+  weekStart,
+  addDays,
 } from "@/lib/utils";
 import { WeeklyHoursChart } from "@/components/charts/WeeklyHoursChart";
 import { TestTrendChart } from "@/components/charts/TestTrendChart";
-import { SubjectMasteryChart } from "@/components/charts/SubjectMasteryChart";
+import { ExecutiveSummary } from "@/components/ExecutiveSummary";
+import { PlanVsActual } from "@/components/PlanVsActual";
+import { AlertCard } from "@/components/AlertCard";
+import {
+  CommentItem,
+  GuardianCommentBox,
+} from "@/components/GuardianCommentBox";
+import { evaluateAlerts } from "@/lib/rules";
+import { subjectHoursFromLogs, sumLoggedHours } from "@/lib/dailyHours";
+import { SyllabusMasteryPanel, type SubjectMasteryData } from "@/components/SyllabusMasteryPanel";
+import { FatherTodayBrief } from "@/components/FatherTodayBrief";
+import { StudentTodayBrief } from "@/components/StudentTodayBrief";
+import { alertAction, parseAlertPayload } from "@/lib/alertMeta";
+import { entryHasStudyContent } from "@/lib/dailyRitual";
 
 export default async function DashboardPage() {
   const today = startOfDay(new Date());
   const weekAgo = daysAgo(6);
   const monthAgo = daysAgo(29);
+  const monday = weekStart(today);
+  const sunday = addDays(monday, 6);
+  const role = await currentRole();
+  const canSeeAlerts = can(role, "alert:view");
+  const canAckAlerts = can(role, "alert:ack");
+  const canDeleteAlerts = can(role, "alert:delete");
+  const canEditPlan = can(role, "plan:edit");
+  const canCreateComment = can(role, "comment:create");
+  const canDeleteComment = can(role, "comment:delete");
+
+  // Evaluate the rules engine first — its outputs feed the summary card. Cheap
+  // local SQLite work, fine to run inline on every dashboard render.
+  await evaluateAlerts();
 
   const [
     todaysLog,
@@ -38,15 +67,22 @@ export default async function DashboardPage() {
     topicCounts,
     pendingHomework,
     upcomingTests,
+    weekLogsMonStart,
+    plan,
+    activeAlerts,
+    generalComments,
   ] = await Promise.all([
     prisma.dailyLog.findUnique({
       where: { date: today },
       include: {
         entries: { include: { subject: true, chapter: true } },
+        reflection: true,
+        photos: true,
       },
     }),
     prisma.dailyLog.findMany({
       where: { date: { gte: weekAgo } },
+      include: { photos: true },
       orderBy: { date: "asc" },
     }),
     prisma.doubt.findMany({
@@ -62,10 +98,9 @@ export default async function DashboardPage() {
     }),
     prisma.subject.findMany({
       include: {
-        chapters: {
-          include: { topics: true },
-        },
+        chapters: { include: { topics: true } },
       },
+      orderBy: { name: "asc" },
     }),
     prisma.topic.groupBy({
       by: ["status"],
@@ -80,24 +115,45 @@ export default async function DashboardPage() {
       include: { subjects: { include: { subject: true } } },
       take: 3,
     }),
+    prisma.dailyLog.findMany({
+      where: { date: { gte: monday } },
+      include: { entries: true, photos: true },
+    }),
+    prisma.studyPlan.findUnique({
+      where: { weekStart: monday },
+      include: { subjects: { include: { subject: true } } },
+    }),
+    // For dashboard: top 3 unacknowledged active alerts (severity-ordered).
+    // Severity strings are coincidentally alphabetised the right way:
+    // 'info' < 'red' < 'warn'. That's wrong; sort manually.
+    prisma.alert.findMany({
+      where: { resolvedAt: null, acknowledgedAt: null },
+    }),
+    // General-scope father notes (the "Father's notes" feed).
+    prisma.guardianComment.findMany({
+      where: { scope: "general" },
+      orderBy: { createdAt: "desc" },
+      take: 5,
+    }),
   ]);
 
-  const todayHours =
-    (todaysLog?.schoolHours ?? 0) +
-    (todaysLog?.coachingHours ?? 0) +
-    (todaysLog?.selfStudyHours ?? 0);
+  // --- Today + this week hour breakdowns ---
+  const todaySchoolHours = todaysLog?.schoolHours ?? 0;
+  const todayCoachingHours = todaysLog?.coachingHours ?? 0;
+  const todaySelfHours = todaysLog?.selfStudyHours ?? 0;
+  const todayHours = todaySchoolHours + todayCoachingHours + todaySelfHours;
+  const todayEvidenceCount = todaysLog?.photos.length ?? 0;
 
-  const weekHours = weekLogs.reduce(
-    (s, l) => s + l.schoolHours + l.coachingHours + l.selfStudyHours,
-    0
-  );
-  const avgDay = weekLogs.length ? weekHours / weekLogs.length : 0;
+  const weekHoursRolling = sumLoggedHours(weekLogs);
+  const avgDay = weekHoursRolling / 7;
+  const weekLoggedHoursMonStart = sumLoggedHours(weekLogsMonStart);
 
   const weekChartData: Array<{
     date: string;
     school: number;
     coaching: number;
     self: number;
+    evidence: number;
   }> = [];
   for (let i = 6; i >= 0; i--) {
     const d = daysAgo(i);
@@ -109,9 +165,11 @@ export default async function DashboardPage() {
       school: log?.schoolHours ?? 0,
       coaching: log?.coachingHours ?? 0,
       self: log?.selfStudyHours ?? 0,
+      evidence: log?.photos?.length ?? 0,
     });
   }
 
+  // --- Mastery ---
   const totalTopics = subjects.reduce(
     (s, sub) => s + sub.chapters.reduce((a, c) => a + c.topics.length, 0),
     0
@@ -122,74 +180,248 @@ export default async function DashboardPage() {
     .filter((t) => t.status !== "not_started")
     .reduce((s, t) => s + t._count._all, 0);
 
-  // Subject-wise mastery uses the same weighted average as the Subjects page.
-  const subjectMastery = subjects.map((sub) => {
+  const subjectMastery: SubjectMasteryData[] = subjects.map((sub) => {
     const allTopics = sub.chapters.flatMap((c) => c.topics);
+    const statusCounts: Record<string, number> = {};
+    for (const t of allTopics) {
+      statusCounts[t.status] = (statusCounts[t.status] ?? 0) + 1;
+    }
+    const started = allTopics.filter((t) => t.status !== "not_started").length;
+    const mastered = allTopics.filter((t) => t.status === "mastered").length;
     return {
+      id: sub.id,
+      short: sub.short,
       name: sub.name,
       color: sub.color,
       pct: avgProgressPct(allTopics),
+      totalTopics: allTopics.length,
+      startedTopics: started,
+      masteredTopics: mastered,
+      statusCounts,
     };
   });
 
-  // Test trend
   const testTrend = recentTests.map((t) => ({
     date: fmtDate(t.date),
     name: t.name,
     pct: pct(t.totalMarks, t.totalMax),
   }));
-
   const lastTest = recentTests[recentTests.length - 1];
+
+  // --- Executive summary numbers ---
+  const daysLogged7 = weekLogs.length;
+  const nextTest = upcomingTests[0]
+    ? {
+        name: upcomingTests[0].name,
+        daysAway: Math.max(
+          0,
+          Math.ceil(
+            (upcomingTests[0].date.getTime() - today.getTime()) /
+              (1000 * 60 * 60 * 24)
+          )
+        ),
+      }
+    : null;
+
+  // Severity ordering for alerts — red > warn > info.
+  const sevRank = { red: 0, warn: 1, info: 2 } as const;
+  const sortedAlerts = [...activeAlerts].sort((a, b) => {
+    const aw = sevRank[(a.severity as keyof typeof sevRank) ?? "info"] ?? 3;
+    const bw = sevRank[(b.severity as keyof typeof sevRank) ?? "info"] ?? 3;
+    if (aw !== bw) return aw - bw;
+    return b.createdAt.getTime() - a.createdAt.getTime();
+  });
+  const redAlerts = sortedAlerts.filter((a) => a.severity === "red").length;
+  const warnAlerts = sortedAlerts.filter((a) => a.severity === "warn").length;
+  const dashboardAlerts = sortedAlerts.slice(0, 3);
+
+  // --- Planned vs Actual rows ---
+  const planRows = subjects.map((sub) => {
+    const planned = plan?.subjects.find((p) => p.subjectId === sub.id);
+    return {
+      subjectId: sub.id,
+      subject: sub.name,
+      short: sub.short,
+      color: sub.color,
+      plannedHours: planned?.hoursGoal ?? 0,
+      actualHours: Number(
+        subjectHoursFromLogs(weekLogsMonStart, sub.id).toFixed(2)
+      ),
+    };
+  });
+  const weekGoalHours =
+    plan?.totalHoursGoal ??
+    (plan ? plan.subjects.reduce((s, x) => s + x.hoursGoal, 0) : null);
+
+  const weekLabel = `${fmtDate(monday)} – ${fmtDate(sunday)}`;
+
+  // --- Comment lists ---
+  const generalCommentItems: CommentItem[] = generalComments.map((c) => ({
+    id: c.id,
+    body: c.body,
+    authorRole: c.authorRole,
+    createdAt: c.createdAt.toISOString(),
+  }));
+
+  const topAlertRow =
+    sortedAlerts.find((a) => a.severity === "red") ?? sortedAlerts[0];
+  const topAlert = topAlertRow
+    ? {
+        title: topAlertRow.title,
+        severity: topAlertRow.severity as "red" | "warn" | "info",
+        href:
+          alertAction(
+            topAlertRow.kind,
+            parseAlertPayload(topAlertRow.payload)
+          )?.href ?? "/alerts",
+      }
+    : null;
+
+  const weakestSubject = [...subjectMastery].sort((a, b) => a.pct - b.pct)[0];
+  const masteryGap = weakestSubject
+    ? {
+        subject: weakestSubject.name,
+        pct: weakestSubject.pct,
+        color: weakestSubject.color,
+        href: `/subjects?s=${weakestSubject.id}`,
+      }
+    : null;
+
+  // Use the shared ritual predicate so the dashboard badge and the server
+  // ritual check never disagree on what counts as a real study row.
+  const hasStudyRow =
+    !!todaysLog && todaysLog.entries.some((e) => entryHasStudyContent(e));
 
   return (
     <div className="space-y-6">
-      {/* Top stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard
-          label="Today studied"
-          value={`${todayHours.toFixed(1)}h`}
-          hint={
-            todaysLog
-              ? `School ${todaysLog.schoolHours}h · Coach ${todaysLog.coachingHours}h · Self ${todaysLog.selfStudyHours}h`
-              : "No log yet today"
-          }
-          icon={<Clock className="w-4 h-4" />}
-          tone={todayHours >= 8 ? "good" : todayHours >= 5 ? "default" : "warn"}
+      {(role === "guardian" || role === "admin") && (
+        <FatherTodayBrief
+          topAlert={topAlert}
+          nextTest={nextTest}
+          masteryGap={masteryGap}
+          brotherLoggedToday={!!todaysLog}
+          hasEvidenceToday={(todaysLog?.photos.length ?? 0) > 0}
         />
-        <StatCard
-          label="7-day avg"
-          value={`${avgDay.toFixed(1)}h/d`}
-          hint={`${weekHours.toFixed(1)}h total this week`}
-          icon={<Flame className="w-4 h-4" />}
+      )}
+      {role === "student" && (
+        <StudentTodayBrief
+          loggedToday={!!todaysLog}
+          hasEvidence={(todaysLog?.photos.length ?? 0) > 0}
+          hasStudyRow={hasStudyRow}
         />
-        <StatCard
-          label="Open doubts"
-          value={openDoubts.length}
-          hint={
-            openDoubts.length
-              ? `Oldest: ${fmtDate(openDoubts[0].raisedAt)}`
-              : "All caught up"
-          }
-          icon={<HelpCircle className="w-4 h-4" />}
-          tone={openDoubts.length > 5 ? "bad" : openDoubts.length > 0 ? "warn" : "good"}
-        />
-        <StatCard
-          label="Pending homework"
-          value={pendingHomework}
-          hint="School + coaching"
-          icon={<ClipboardList className="w-4 h-4" />}
-          tone={pendingHomework > 5 ? "bad" : pendingHomework > 0 ? "warn" : "good"}
-        />
+      )}
+
+      <ExecutiveSummary
+        weekLabel={weekLabel}
+        weekTrackedHours={weekLoggedHoursMonStart}
+        weekGoalHours={weekGoalHours}
+        daysLogged7={daysLogged7}
+        redAlerts={redAlerts}
+        warnAlerts={warnAlerts}
+        nextTest={nextTest}
+        subjectMastery={subjectMastery}
+        canSeeAlerts={canSeeAlerts}
+      />
+
+      {/* Planned vs Actual + Alerts side-by-side on wide screens. */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className={canSeeAlerts ? "lg:col-span-1" : "lg:col-span-3"}>
+          <PlanVsActual
+            weekLabel={weekLabel}
+            rows={planRows}
+            hasPlan={!!plan}
+            canEditPlan={canEditPlan}
+          />
+        </div>
+        {canSeeAlerts && (
+          <div className="lg:col-span-2">
+            <div className="card p-5">
+              <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                <div>
+                  <div className="text-sm font-semibold flex items-center gap-2">
+                    <Siren className="w-4 h-4 text-bad" />
+                    Alerts
+                    {sortedAlerts.length > 0 && (
+                      <span className="text-xs text-ink-faint font-normal">
+                        ({redAlerts} red, {warnAlerts} warn)
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-xs text-ink-faint">
+                    Deterministic rules. Each one tells you exactly why.
+                  </div>
+                </div>
+                <Link
+                  href="/alerts"
+                  className="text-xs text-accent hover:underline"
+                >
+                  All alerts →
+                </Link>
+              </div>
+              {dashboardAlerts.length === 0 ? (
+                <div className="text-sm text-ink-faint py-4 text-center">
+                  All clear. No active alerts.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {dashboardAlerts.map((a) => (
+                    <AlertCard
+                      key={a.id}
+                      id={a.id}
+                      kind={a.kind}
+                      severity={a.severity as "info" | "warn" | "red"}
+                      title={a.title}
+                      body={a.body}
+                      suggestion={a.suggestion}
+                      createdAt={a.createdAt.toISOString()}
+                      acknowledgedAt={null}
+                      acknowledgedBy={null}
+                      resolvedAt={null}
+                      canAck={canAckAlerts}
+                      canDelete={canDeleteAlerts}
+                      payloadJson={a.payload}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Mastery + last test */}
+      {/* Father's notes feed — visible to everyone, compose box only for guardian/admin. */}
+      {(generalCommentItems.length > 0 || canCreateComment) && (
+        <div className="card p-5">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <div className="text-sm font-semibold flex items-center gap-2">
+                <MessageSquare className="w-4 h-4 text-accent" />
+                Father&apos;s notes
+              </div>
+              <div className="text-xs text-ink-faint">
+                Use them. He reads them.
+              </div>
+            </div>
+          </div>
+          <GuardianCommentBox
+            scope="general"
+            comments={generalCommentItems}
+            canCreate={canCreateComment}
+            canDelete={canDeleteComment}
+            placeholder="Leave a note for him — e.g. 'Revise organic chemistry naming tomorrow.'"
+          />
+        </div>
+      )}
+
+      {/* Charts row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="card p-5 lg:col-span-2">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <div className="text-sm font-semibold">Hours this week</div>
+              <div className="text-sm font-semibold">Hours, last 7 days</div>
               <div className="text-xs text-ink-faint">
-                School vs coaching vs self-study
+                School · coaching · self-study · evidence photos per day.{" "}
+                Avg {avgDay.toFixed(1)}h/day.
               </div>
             </div>
             <Link
@@ -207,20 +439,18 @@ export default async function DashboardPage() {
             <div>
               <div className="text-sm font-semibold">Syllabus mastery</div>
               <div className="text-xs text-ink-faint">
-                {startedTopics} / {totalTopics} topics started · {masteredTopics} mastered
+                {startedTopics} / {totalTopics} topics started · {masteredTopics}{" "}
+                mastered
               </div>
             </div>
             <Target className="w-4 h-4 text-ink-faint" />
           </div>
-          <SubjectMasteryChart data={subjectMastery} />
-          <div className="mt-4 space-y-2">
-            {subjectMastery.map((s) => (
-              <div key={s.name} className="flex items-center justify-between text-sm">
-                <SubjectPill name={s.name} color={s.color} />
-                <span className="font-medium">{s.pct}%</span>
-              </div>
-            ))}
-          </div>
+          <SyllabusMasteryPanel
+            subjects={subjectMastery}
+            totalTopics={totalTopics}
+            startedTopics={startedTopics}
+            masteredTopics={masteredTopics}
+          />
         </div>
       </div>
 
@@ -254,7 +484,9 @@ export default async function DashboardPage() {
           <div className="flex items-center justify-between mb-4">
             <div>
               <div className="text-sm font-semibold">Today</div>
-              <div className="text-xs text-ink-faint">{fmtDate(today, true)}</div>
+              <div className="text-xs text-ink-faint">
+                {fmtDate(today, true)}
+              </div>
             </div>
             <Link
               href={
@@ -269,24 +501,25 @@ export default async function DashboardPage() {
           </div>
           {todaysLog ? (
             <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-2 text-center">
+              <div className="grid grid-cols-3 gap-2 text-center">
                 <MiniStat
-                  label="Hours"
-                  value={`${(
-                    todaysLog.schoolHours +
-                    todaysLog.coachingHours +
-                    todaysLog.selfStudyHours
-                  ).toFixed(1)}h`}
+                  label="Total"
+                  value={`${todayHours.toFixed(1)}h`}
                   icon={<Clock className="w-3 h-3" />}
                 />
                 <MiniStat
+                  label="Evidence"
+                  value={todayEvidenceCount}
+                  icon={<Camera className="w-3 h-3" />}
+                />
+                <MiniStat
                   label="Entries"
-                  value={todaysLog.entries.length}
+                  value={todaysLog?.entries.length ?? 0}
                   icon={<BookOpen className="w-3 h-3" />}
                 />
               </div>
               <div className="space-y-1.5">
-                {todaysLog.entries.slice(0, 5).map((e) => (
+                {todaysLog?.entries.slice(0, 5).map((e) => (
                   <div
                     key={e.id}
                     className="flex items-center justify-between text-sm border-t border-border-soft pt-1.5"
@@ -318,6 +551,52 @@ export default async function DashboardPage() {
           )}
         </div>
       </div>
+
+      {/* Reflection — today */}
+      {todaysLog?.reflection &&
+        (todaysLog.reflection.learned ||
+          todaysLog.reflection.confused ||
+          todaysLog.reflection.hardestSolved) && (
+          <div className="card p-5">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <div className="text-sm font-semibold flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-accent" />
+                  Today&apos;s reflection
+                </div>
+                <div className="text-xs text-ink-faint">In his own words.</div>
+              </div>
+              <Link
+                href={`/daily/new?date=${toDateInputValue(today)}`}
+                className="text-xs text-accent hover:underline"
+              >
+                Edit →
+              </Link>
+            </div>
+            <div className="space-y-2">
+              {todaysLog.reflection.learned && (
+                <ReflLine
+                  label="Learned"
+                  text={todaysLog.reflection.learned}
+                />
+              )}
+              {todaysLog.reflection.confused && (
+                <ReflLine
+                  label="Confused by"
+                  text={todaysLog.reflection.confused}
+                  tone="warn"
+                />
+              )}
+              {todaysLog.reflection.hardestSolved && (
+                <ReflLine
+                  label="Hardest solved"
+                  text={todaysLog.reflection.hardestSolved}
+                  tone="good"
+                />
+              )}
+            </div>
+          </div>
+        )}
 
       {/* Upcoming tests */}
       <div className="card p-5">
@@ -404,7 +683,9 @@ export default async function DashboardPage() {
           </Link>
         </div>
         {openDoubts.length === 0 ? (
-          <div className="text-sm text-ink-faint py-4">No open doubts. Nice.</div>
+          <div className="text-sm text-ink-faint py-4">
+            No open doubts. Nice.
+          </div>
         ) : (
           <div className="divide-y divide-border-soft">
             {openDoubts.map((d) => (
@@ -450,6 +731,31 @@ function MiniStat({
         {label}
       </div>
       <div className="text-sm font-semibold mt-0.5">{value}</div>
+    </div>
+  );
+}
+
+function ReflLine({
+  label,
+  text,
+  tone = "default",
+}: {
+  label: string;
+  text: string;
+  tone?: "default" | "good" | "warn";
+}) {
+  const toneCls =
+    tone === "good"
+      ? "text-good"
+      : tone === "warn"
+      ? "text-warn"
+      : "text-ink-dim";
+  return (
+    <div className="text-sm">
+      <span className={`text-[10px] uppercase tracking-wide mr-2 ${toneCls}`}>
+        {label}
+      </span>
+      <span className="text-ink-dim">{text}</span>
     </div>
   );
 }

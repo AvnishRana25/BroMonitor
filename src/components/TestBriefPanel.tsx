@@ -27,18 +27,17 @@ export function TestBriefPanel({
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
-  if (daysAway > 7) {
-    return null; // only show within 7-day window
-  }
   if (!geminiConfigured) {
     return (
       <div className="mt-4 border-t border-border-soft pt-3 text-xs text-ink-faint flex items-center gap-1.5">
         <Sparkles className="w-3.5 h-3.5" />
-        Set <code>GEMINI_API_KEY</code> in .env to generate an AI focus brief
-        for this test.
+        AI briefs need <code className="text-[10px]">GEMINI_API_KEY</code> on the
+        server (Vercel env).
       </div>
     );
   }
+
+  const farOut = daysAway > 7;
 
   return (
     <div className="mt-4 border-t border-border-soft pt-3">
@@ -76,7 +75,7 @@ export function TestBriefPanel({
                       | null;
                     setError(
                       j?.error ??
-                        `Brief saved but could not be loaded (status ${resp.status}). Refresh the page to see it.`,
+                        `Brief saved but could not load (status ${resp.status}). Refresh the page.`,
                     );
                     return;
                   }
@@ -90,8 +89,8 @@ export function TestBriefPanel({
                 } catch (e) {
                   setError(
                     e instanceof Error
-                      ? `Brief saved but fetch failed: ${e.message}. Refresh the page to see it.`
-                      : "Brief saved but fetch failed. Refresh the page to see it.",
+                      ? `Brief saved but fetch failed: ${e.message}. Refresh the page.`
+                      : "Brief saved but fetch failed. Refresh the page.",
                   );
                 }
               });
@@ -108,19 +107,26 @@ export function TestBriefPanel({
           </button>
         </div>
       </div>
+      {farOut && !brief && (
+        <p className="text-[11px] text-ink-faint mb-2">
+          Test is {daysAway} days away — you can generate a brief now; the daily
+          cron also refreshes briefs automatically in the last 7 days before the
+          exam.
+        </p>
+      )}
       {error && (
         <div className="text-xs text-bad bg-bad/10 border border-bad/30 rounded-lg px-2.5 py-1.5 mb-2">
           {error}
         </div>
       )}
       {brief ? (
-        <div className="text-sm text-ink whitespace-pre-line leading-relaxed bg-bg-soft border border-border-soft rounded-lg p-3">
+        <div className="text-sm text-ink whitespace-pre-line leading-relaxed bg-bg-soft border border-border-soft rounded-lg p-3 max-h-[min(420px,50vh)] overflow-y-auto">
           {brief.body}
         </div>
       ) : (
         <div className="text-xs text-ink-faint">
-          No brief yet. Click &quot;Generate brief&quot; to get a day-by-day
-          revision plan based on his current syllabus state.
+          No brief yet. Generate a day-by-day revision plan from his syllabus
+          and recent logs.
         </div>
       )}
     </div>

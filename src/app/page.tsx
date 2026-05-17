@@ -58,6 +58,7 @@ export default async function DashboardPage() {
   const canEditPlan = can(role, "plan:edit");
   const canCreateComment = can(role, "comment:create");
   const canDeleteComment = can(role, "comment:delete");
+  const canManageTests = can(role, "test:create");
 
   // Evaluate the rules engine first — its outputs feed the summary card. Cheap
   // local SQLite work, fine to run inline on every dashboard render.
@@ -628,12 +629,14 @@ export default async function DashboardPage() {
               Plan revision around these.
             </div>
           </div>
-          <Link
-            href="/tests/upcoming/new"
-            className="text-xs text-accent hover:underline"
-          >
-            Schedule new →
-          </Link>
+          {canManageTests && (
+            <Link
+              href="/tests/upcoming/new"
+              className="text-xs text-accent hover:underline"
+            >
+              Schedule new →
+            </Link>
+          )}
         </div>
         {upcomingTests.length === 0 ? (
           <div className="text-sm text-ink-faint py-2">

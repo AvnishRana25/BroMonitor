@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requireRole } from "@/lib/session";
 
 export async function createTest(formData: FormData) {
-  await requireRole(["student", "admin"]);
+  await requireRole(["student", "guardian", "admin"]);
   const name = (formData.get("name") as string).trim();
   const dateStr = formData.get("date") as string;
   const type = formData.get("type") as string;
@@ -80,7 +80,7 @@ export async function deleteTest(id: string) {
 }
 
 export async function createUpcomingTest(formData: FormData) {
-  await requireRole(["student", "admin"]);
+  await requireRole(["student", "guardian", "admin"]);
   const name = ((formData.get("name") as string) || "").trim();
   const dateStr = ((formData.get("date") as string) || "").trim();
   const type = ((formData.get("type") as string) || "").trim();
@@ -150,7 +150,7 @@ export async function createUpcomingTest(formData: FormData) {
 }
 
 export async function deleteUpcomingTest(id: string) {
-  await requireRole(["admin"]);
+  await requireRole(["guardian", "admin"]);
   await prisma.upcomingTest.delete({ where: { id } });
   revalidatePath("/tests");
   revalidatePath("/");

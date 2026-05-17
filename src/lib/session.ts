@@ -40,6 +40,7 @@ export type Action =
   | "log:delete"
   | "test:create"
   | "test:delete"
+  | "test:delete_scheduled"
   | "doubt:create"
   | "doubt:resolve"
   | "doubt:delete"
@@ -67,8 +68,9 @@ const ABILITIES: Record<Action, Role[]> = {
   "log:create": ["student", "admin"],
   "log:edit": ["student", "admin"],
   "log:delete": ["admin"],
-  "test:create": ["student", "admin"],
+  "test:create": ["student", "guardian", "admin"],
   "test:delete": ["admin"],
+  "test:delete_scheduled": ["guardian", "admin"],
   "doubt:create": ["student", "admin"],
   "doubt:resolve": ["student", "admin"],
   "doubt:delete": ["student", "admin"],

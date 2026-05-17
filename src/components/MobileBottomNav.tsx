@@ -36,23 +36,16 @@ function tabsForRole(role: Role): Tab[] {
       { href: "/tests", label: "Tests", icon: ClipboardList },
     ];
   }
-  if (role === "guardian") {
+  if (role === "guardian" || role === "admin") {
     return [
       { href: "/", label: "Home", icon: LayoutDashboard },
+      { href: "/tests", label: "Tests", icon: ClipboardList },
       { href: "/daily", label: "Logs", icon: CalendarDays },
       { href: "/reports", label: "Reports", icon: Sparkles },
-      { href: "/doubts", label: "Doubts", icon: HelpCircle },
       { href: "/alerts", label: "Alerts", icon: Siren },
     ];
   }
-  // Admin — same mobile shell as guardian (plan/subjects on desktop sidebar).
-  return [
-    { href: "/", label: "Home", icon: LayoutDashboard },
-    { href: "/daily", label: "Logs", icon: CalendarDays },
-    { href: "/reports", label: "Reports", icon: Sparkles },
-    { href: "/doubts", label: "Doubts", icon: HelpCircle },
-    { href: "/alerts", label: "Alerts", icon: Siren },
-  ];
+  return [];
 }
 
 export function MobileBottomNav({ role }: { role: Role }) {

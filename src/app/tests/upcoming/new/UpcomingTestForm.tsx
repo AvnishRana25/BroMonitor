@@ -18,6 +18,7 @@ type Subject = {
 export function UpcomingTestForm({ subjects }: { subjects: Subject[] }) {
   const router = useRouter();
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [type, setType] = useState<string>("school_unit");
 
   const [selected, setSelected] = useState<Record<string, boolean>>({});
@@ -53,8 +54,9 @@ export function UpcomingTestForm({ subjects }: { subjects: Subject[] }) {
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    setError(null);
     if (!Object.values(selected).some((v) => v)) {
-      alert("Pick at least one subject for this test.");
+      setError("Pick at least one subject for this test.");
       return;
     }
     setSubmitting(true);
@@ -68,14 +70,26 @@ export function UpcomingTestForm({ subjects }: { subjects: Subject[] }) {
       fd.delete(`chapters_${subjectId}`);
       chSet.forEach((cid) => fd.append(`chapters_${subjectId}`, cid));
     });
-    await createUpcomingTest(fd);
-    setSubmitting(false);
-    router.push("/tests");
-    router.refresh();
+    try {
+      await createUpcomingTest(fd);
+      router.push("/tests");
+      router.refresh();
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Could not save scheduled test.",
+      );
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
     <form onSubmit={onSubmit} className="space-y-5">
+      {error && (
+        <p className="text-sm text-bad bg-bad/10 border border-bad/30 rounded-lg px-3 py-2">
+          {error}
+        </p>
+      )}
       <div className="card p-5">
         <div className="text-base font-semibold mb-4">Test details</div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

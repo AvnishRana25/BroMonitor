@@ -8,9 +8,14 @@ import { DeleteTestButton } from "./DeleteTestButton";
 import { DeleteUpcomingTestButton } from "./DeleteUpcomingTestButton";
 import { TestBriefPanel } from "@/components/TestBriefPanel";
 import { isGeminiConfigured } from "@/lib/ai/gemini";
+import { can, currentRole } from "@/lib/session";
 
 export default async function TestsPage() {
   const today = startOfDay(new Date());
+  const role = await currentRole();
+  const canCreateTests = can(role, "test:create");
+  const canDeletePastTests = can(role, "test:delete");
+  const canDeleteScheduled = can(role, "test:delete_scheduled");
 
   const [tests, upcoming, briefs] = await Promise.all([
     prisma.test.findMany({
@@ -33,14 +38,16 @@ export default async function TestsPage() {
         <div className="text-sm text-ink-dim">
           {tests.length} past · {upcoming.length} upcoming
         </div>
-        <div className="flex items-center gap-2">
-          <Link href="/tests/upcoming/new" className="btn-ghost">
-            <CalendarPlus className="w-4 h-4" /> Schedule upcoming test
-          </Link>
-          <Link href="/tests/new" className="btn-primary">
-            <Plus className="w-4 h-4" /> Log a test
-          </Link>
-        </div>
+        {canCreateTests && (
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            <Link href="/tests/upcoming/new" className="btn-ghost">
+              <CalendarPlus className="w-4 h-4" /> Schedule test
+            </Link>
+            <Link href="/tests/new" className="btn-primary">
+              <Plus className="w-4 h-4" /> Log scores
+            </Link>
+          </div>
+        )}
       </div>
 
       {/* Upcoming */}
@@ -53,13 +60,18 @@ export default async function TestsPage() {
         </div>
         {upcoming.length === 0 ? (
           <div className="card p-5 text-sm text-ink-faint">
-            No upcoming tests scheduled.{" "}
-            <Link
-              href="/tests/upcoming/new"
-              className="text-accent hover:underline"
-            >
-              Schedule one →
-            </Link>
+            No upcoming tests scheduled.
+            {canCreateTests && (
+              <>
+                {" "}
+                <Link
+                  href="/tests/upcoming/new"
+                  className="text-accent hover:underline"
+                >
+                  Schedule one →
+                </Link>
+              </>
+            )}
           </div>
         ) : (
           <div className="space-y-3">
@@ -102,13 +114,17 @@ export default async function TestsPage() {
                       >
                         {days === 0 ? "Today" : `in ${days}d`}
                       </span>
-                      <Link
-                        href={`/tests/new?upcoming=${u.id}`}
-                        className="btn-ghost text-xs"
-                      >
-                        Log scores
-                      </Link>
-                      <DeleteUpcomingTestButton id={u.id} />
+                      {canCreateTests && (
+                        <Link
+                          href={`/tests/new?upcoming=${u.id}`}
+                          className="btn-ghost text-xs"
+                        >
+                          Log scores
+                        </Link>
+                      )}
+                      {canDeleteScheduled && (
+                        <DeleteUpcomingTestButton id={u.id} />
+                      )}
                     </div>
                   </div>
 
@@ -180,9 +196,11 @@ export default async function TestsPage() {
             title="No tests logged yet"
             description="Log school exams and coaching tests with subject-wise breakdown to track strengths and weaknesses over time."
             action={
-              <Link href="/tests/new" className="btn-primary">
-                <Plus className="w-4 h-4" /> Log first test
-              </Link>
+              canCreateTests ? (
+                <Link href="/tests/new" className="btn-primary">
+                  <Plus className="w-4 h-4" /> Log first test
+                </Link>
+              ) : null
             }
           />
         ) : (
@@ -221,7 +239,7 @@ export default async function TestsPage() {
                       {overall >= 80 && (
                         <Trophy className="w-5 h-5 text-good" />
                       )}
-                      <DeleteTestButton id={t.id} />
+                      {canDeletePastTests && <DeleteTestButton id={t.id} />}
                     </div>
                   </div>
 

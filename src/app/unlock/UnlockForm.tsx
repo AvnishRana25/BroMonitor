@@ -72,28 +72,12 @@ export function UnlockForm({ configured, from }: Props) {
                 }
                 title={enabled ? meta.subtitle : "Not available"}
               >
-                <div className="flex items-center gap-2">
-                  <span
-                    className={
-                      "w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 " +
-                      (isActive
-                        ? r === "student"
-                          ? "bg-physics/25 text-physics"
-                          : r === "guardian"
-                            ? "bg-good/25 text-good"
-                            : "bg-accent/25 text-accent"
-                        : "bg-bg-soft text-ink-faint")
-                    }
-                  >
-                    {meta.initial}
-                  </span>
-                  <span
-                    className={
-                      "text-sm font-medium " + (isActive ? meta.tone : "")
-                    }
-                  >
-                    {meta.label}
-                  </span>
+                <div
+                  className={
+                    "text-sm font-medium " + (isActive ? meta.tone : "")
+                  }
+                >
+                  {meta.label}
                 </div>
                 <div className="text-[10px] text-ink-faint mt-0.5 leading-snug">
                   {meta.subtitle}

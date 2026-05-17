@@ -13,8 +13,64 @@ function revalidatePhotoPaths() {
   revalidatePath("/daily/new");
 }
 
+type JsonBody = {
+  dailyLogId?: string;
+  base64?: string;
+  mime?: string;
+  name?: string;
+};
+
 export async function POST(req: Request) {
   try {
+    const contentType = req.headers.get("content-type") ?? "";
+
+    if (contentType.includes("application/json")) {
+      const body = (await req.json()) as JsonBody;
+      const dailyLogId = String(body.dailyLogId ?? "").trim();
+      const base64 = String(body.base64 ?? "").trim();
+      if (!dailyLogId) {
+        return NextResponse.json(
+          { ok: false, error: "Missing daily log id." },
+          { status: 400 },
+        );
+      }
+      if (!base64) {
+        return NextResponse.json(
+          { ok: false, error: "No photo data in request." },
+          { status: 400 },
+        );
+      }
+      let bytes: Buffer;
+      try {
+        bytes = Buffer.from(base64, "base64");
+      } catch {
+        return NextResponse.json(
+          { ok: false, error: "Invalid photo data." },
+          { status: 400 },
+        );
+      }
+      if (!bytes.byteLength) {
+        return NextResponse.json(
+          { ok: false, error: "Photo is empty." },
+          { status: 400 },
+        );
+      }
+      const mime =
+        body.mime && body.mime.startsWith("image/")
+          ? body.mime
+          : "image/jpeg";
+      const result = await uploadOneEvidencePhoto(dailyLogId, {
+        bytes: new Uint8Array(bytes).buffer,
+        mime,
+        name: body.name || "photo.jpg",
+        size: bytes.byteLength,
+      });
+      if (result.ok) revalidatePhotoPaths();
+      return NextResponse.json(result, {
+        status: result.ok ? 200 : (result.status ?? 400),
+      });
+    }
+
     const formData = await req.formData();
     const dailyLogId = String(formData.get("dailyLogId") ?? "").trim();
     if (!dailyLogId) {
@@ -31,9 +87,7 @@ export async function POST(req: Request) {
       );
     }
     const result = await uploadOneEvidencePhoto(dailyLogId, upload);
-    if (result.ok) {
-      revalidatePhotoPaths();
-    }
+    if (result.ok) revalidatePhotoPaths();
     return NextResponse.json(result, {
       status: result.ok ? 200 : (result.status ?? 400),
     });

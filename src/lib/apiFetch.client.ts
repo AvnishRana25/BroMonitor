@@ -1,14 +1,28 @@
 /** Shared fetch helper for JSON API routes (uploads, ensure log, etc.). */
 
+export function apiUrl(path: string): string {
+  if (typeof window !== "undefined") {
+    return new URL(path, window.location.origin).href;
+  }
+  return path;
+}
+
 export async function apiJson<T extends { ok: boolean }>(
-  url: string,
+  path: string,
   init: RequestInit,
 ): Promise<T> {
-  const res = await fetch(url, {
+  const res = await fetch(apiUrl(path), {
     ...init,
     credentials: "include",
     redirect: "manual",
   });
+
+  if (res.status === 0) {
+    return {
+      ok: false,
+      error: "Network error. Check your connection and try again.",
+    } as unknown as T;
+  }
 
   if (
     res.status === 301 ||

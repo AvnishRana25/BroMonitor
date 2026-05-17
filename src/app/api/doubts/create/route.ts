@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
-import { createDoubtFromFormData } from "@/lib/doubtCreate";
+import {
+  createDoubtFromFormData,
+  createDoubtFromJson,
+} from "@/lib/doubtCreate";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -8,8 +11,11 @@ export const maxDuration = 60;
 
 export async function POST(req: Request) {
   try {
-    const formData = await req.formData();
-    const result = await createDoubtFromFormData(formData);
+    const contentType = req.headers.get("content-type") ?? "";
+    const result = contentType.includes("application/json")
+      ? await createDoubtFromJson(await req.json())
+      : await createDoubtFromFormData(await req.formData());
+
     if (result.ok) {
       revalidatePath("/doubts");
       revalidatePath("/");

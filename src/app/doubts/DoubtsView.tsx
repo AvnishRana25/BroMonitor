@@ -110,10 +110,8 @@ export function DoubtsView({
     e.preventDefault();
     setFormError(null);
     const form = e.currentTarget;
-    const fd = new FormData(form);
-    if (imageFile) fd.set("image", imageFile);
     startTransition(async () => {
-      const created = await postCreateDoubt(fd);
+      const created = await postCreateDoubt(form, imageFile);
       if (!created.ok) {
         setFormError(created.error);
         return;

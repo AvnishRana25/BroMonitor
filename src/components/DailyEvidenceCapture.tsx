@@ -35,6 +35,13 @@ type UploadingItem = {
   preview: string;
 };
 
+function newUploadId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `up-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
 export function DailyEvidenceCapture({
   existingPhotos,
   logDate,
@@ -100,7 +107,7 @@ export function DailyEvidenceCapture({
       }
 
       const placeholders: UploadingItem[] = compressed.map((f) => ({
-        id: crypto.randomUUID(),
+        id: newUploadId(),
         preview: URL.createObjectURL(f),
       }));
       setUploading((u) => [...u, ...placeholders]);
@@ -153,14 +160,24 @@ export function DailyEvidenceCapture({
     const files = e.target.files;
     e.target.value = "";
     if (!files?.length) return;
-    await uploadFiles([files[0]]);
+    try {
+      await uploadFiles([files[0]]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not upload photo.");
+      setBusy(false);
+    }
   }
 
   async function onGalleryChange(e: React.ChangeEvent<HTMLInputElement>) {
     const files = e.target.files;
     e.target.value = "";
     if (!files?.length) return;
-    await uploadFiles(Array.from(files));
+    try {
+      await uploadFiles(Array.from(files));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not upload photo.");
+      setBusy(false);
+    }
   }
 
   async function handleDelete(id: string) {
@@ -214,7 +231,7 @@ export function DailyEvidenceCapture({
           <input
             ref={cameraInputRef}
             type="file"
-            accept="image/*"
+            accept="image/jpeg,image/png,image/webp,image/heic,image/heif,image/*"
             capture="environment"
             className="sr-only"
             aria-label="Take photo with camera"
@@ -223,7 +240,7 @@ export function DailyEvidenceCapture({
           <input
             ref={galleryInputRef}
             type="file"
-            accept="image/*"
+            accept="image/jpeg,image/png,image/webp,image/heic,image/heif,image/*"
             multiple
             className="sr-only"
             aria-label="Choose photos from gallery"

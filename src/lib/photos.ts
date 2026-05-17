@@ -131,7 +131,6 @@ export async function savePhotoBytes(
       folder,
       resource_type: "image",
       overwrite: false,
-      transformation: [{ quality: "auto", fetch_format: "auto" }],
     });
     return {
       publicId: res.public_id,
@@ -200,7 +199,6 @@ export async function uploadDoubtImage(
     folder: "bromonitor/doubts",
     resource_type: "image",
     overwrite: false,
-    transformation: [{ quality: "auto:good", fetch_format: "auto" }],
   });
   return {
     publicId: res.public_id,

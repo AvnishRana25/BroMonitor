@@ -17,7 +17,7 @@ export type EvidenceUploadResult =
 /** Core evidence upload — safe to call from Route Handlers (not a Server Action). */
 export async function uploadOneEvidencePhoto(
   dailyLogId: string,
-  upload: ParsedUpload,
+  upload: ParsedUpload | { bytes: ArrayBuffer; mime: string; name: string; size: number },
 ): Promise<EvidenceUploadResult> {
   const role = await currentRole();
   if (!role) {

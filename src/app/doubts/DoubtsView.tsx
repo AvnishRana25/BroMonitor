@@ -21,11 +21,11 @@ import {
   normalizeImageFile,
 } from "@/lib/imageCompress.client";
 import { postAiDoubtAnswer } from "@/lib/aiDoubt.client";
+import { postCreateDoubt } from "@/lib/createDoubt.client";
 import { SubjectPill } from "@/components/SubjectPill";
 import { fmtDate, fmtDateTime } from "@/lib/utils";
 import {
   clearAiDoubtAnswer,
-  createDoubt,
   deleteDoubt,
   markDoubtResolvedByAi,
   reopenDoubt,
@@ -113,17 +113,18 @@ export function DoubtsView({
     const fd = new FormData(form);
     if (imageFile) fd.set("image", imageFile);
     startTransition(async () => {
-      try {
-        const { id } = await createDoubt(fd);
-        form.reset();
-        clearImage();
-        if (geminiConfigured) {
-          const ai = await postAiDoubtAnswer(id);
-          if (!ai.ok) setFormError(ai.error);
-          else router.refresh();
-        }
-      } catch (err) {
-        setFormError(err instanceof Error ? err.message : "Could not add doubt.");
+      const created = await postCreateDoubt(fd);
+      if (!created.ok) {
+        setFormError(created.error);
+        return;
+      }
+      form.reset();
+      clearImage();
+      router.refresh();
+      if (geminiConfigured) {
+        const ai = await postAiDoubtAnswer(created.id);
+        if (!ai.ok) setFormError(ai.error);
+        else router.refresh();
       }
     });
   }

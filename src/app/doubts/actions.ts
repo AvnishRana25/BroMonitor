@@ -7,76 +7,18 @@ import {
   answerDoubtWithAi,
   resolveDoubtByAi as resolveDoubtByAiLib,
 } from "@/lib/ai/doubt";
-import {
-  PhotoValidationError,
-  deletePhoto,
-  isCloudinaryConfigured,
-  uploadDoubtImage,
-} from "@/lib/photos";
+import { deletePhoto } from "@/lib/photos";
+import { createDoubtFromFormData } from "@/lib/doubtCreate";
 
-// Reasonable upper bound for question text — long enough for a multi-line
-// problem statement, short enough to keep the DB / AI prompt bounded.
-// We allow empty question text when an image is attached, since the image
-// IS the doubt (a photo of a problem from the textbook).
-const MAX_QUESTION_LEN = 2000;
-const MAX_CHAPTER_LEN = 200;
-const MAX_TOPIC_LEN = 200;
-
+/** @deprecated Prefer POST /api/doubts/create from the client. */
 export async function createDoubt(
   formData: FormData,
 ): Promise<{ id: string }> {
-  await requireRole(["student", "admin"]);
-  const subjectId = ((formData.get("subjectId") as string) || "").trim();
-  const question = ((formData.get("question") as string) || "").trim();
-  const imageFile = formData.get("image");
-  const hasImage = imageFile instanceof File && imageFile.size > 0;
-  if (!subjectId) throw new Error("Pick a subject.");
-  if (!question && !hasImage) {
-    throw new Error("Type the doubt or attach a photo of the problem.");
-  }
-  if (question.length > MAX_QUESTION_LEN) {
-    throw new Error(
-      `Doubt is too long (${question.length} chars). Keep it under ${MAX_QUESTION_LEN}.`,
-    );
-  }
-  const chapter =
-    ((formData.get("chapter") as string) || "").trim().slice(0, MAX_CHAPTER_LEN) ||
-    null;
-  const topic =
-    ((formData.get("topic") as string) || "").trim().slice(0, MAX_TOPIC_LEN) ||
-    null;
-
-  let imagePublicId: string | null = null;
-  let imageUrl: string | null = null;
-  let imageMime: string | null = null;
-  if (hasImage) {
-    if (!isCloudinaryConfigured()) {
-      throw new PhotoValidationError(
-        "Image upload needs Cloudinary credentials in .env (CLOUDINARY_CLOUD_NAME / API_KEY / API_SECRET).",
-      );
-    }
-    const file = imageFile as File;
-    const bytes = await file.arrayBuffer();
-    const up = await uploadDoubtImage(bytes, file.type);
-    imagePublicId = up.publicId;
-    imageUrl = up.url;
-    imageMime = up.mime;
-  }
-
-  const doubt = await prisma.doubt.create({
-    data: {
-      subjectId,
-      question: question || "(image-only doubt)",
-      chapter,
-      topic,
-      imagePublicId,
-      imageUrl,
-      imageMime,
-    },
-  });
+  const result = await createDoubtFromFormData(formData);
+  if (!result.ok) throw new Error(result.error);
   revalidatePath("/doubts");
   revalidatePath("/");
-  return { id: doubt.id };
+  return { id: result.id };
 }
 
 export async function resolveDoubt(id: string, by: string) {

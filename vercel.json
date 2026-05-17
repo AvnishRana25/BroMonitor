@@ -10,6 +10,9 @@
     "src/app/api/cron/daily-tick/route.ts": { "maxDuration": 60 },
     "src/app/api/cron/weekly-report/route.ts": { "maxDuration": 60 },
     "src/app/api/cron/monthly-report/route.ts": { "maxDuration": 60 },
-    "src/app/api/cron/test-briefs/route.ts": { "maxDuration": 60 }
+    "src/app/api/cron/test-briefs/route.ts": { "maxDuration": 60 },
+    "src/app/api/photos/upload/route.ts": { "maxDuration": 60 },
+    "src/app/api/doubts/create/route.ts": { "maxDuration": 60 },
+    "src/app/api/doubts/[id]/ai/route.ts": { "maxDuration": 60 }
   }
 }

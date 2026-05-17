@@ -9,6 +9,7 @@ import {
   deletePhoto,
   savePhotoBytes,
 } from "@/lib/photos";
+import { uploadOneEvidencePhoto } from "@/lib/evidenceUpload";
 
 function revalidatePhotoPaths() {
   revalidatePath("/daily");
@@ -35,7 +36,7 @@ async function storeOnePhoto(dailyLogId: string, file: File): Promise<string> {
   return photo.id;
 }
 
-/** Upload a single evidence photo (used for instant mobile uploads). */
+/** Upload a single evidence photo (legacy Server Action — prefer /api/photos/upload). */
 export async function uploadDailyPhoto(
   dailyLogId: string,
   formData: FormData,
@@ -43,48 +44,27 @@ export async function uploadDailyPhoto(
   | { ok: true; id: string; url: string }
   | { ok: false; error: string }
 > {
-  try {
-    await requireRole(["student", "admin"]);
-  } catch (e) {
-    return {
-      ok: false,
-      error: e instanceof Error ? e.message : "Not allowed to upload photos.",
-    };
-  }
-
-  const log = await prisma.dailyLog.findUnique({ where: { id: dailyLogId } });
-  if (!log) return { ok: false, error: "Daily log not found." };
-
   const file = formData.get("photo");
-  if (!(file instanceof File) || !file.size) {
+  if (!(file instanceof File)) {
     return { ok: false, error: "No photo in request." };
   }
-
-  const existingCount = await prisma.photo.count({ where: { dailyLogId } });
-  if (existingCount >= MAX_PHOTOS_PER_LOG) {
-    return {
-      ok: false,
-      error: `Max ${MAX_PHOTOS_PER_LOG} photos per log. Delete one first.`,
-    };
-  }
-
-  try {
-    const id = await storeOnePhoto(dailyLogId, file);
-    revalidatePhotoPaths();
-    return { ok: true, id, url: `/api/photos/${id}` };
-  } catch (e) {
-    if (e instanceof PhotoValidationError) {
-      return { ok: false, error: e.message };
-    }
-    throw e;
-  }
+  const result = await uploadOneEvidencePhoto(dailyLogId, file);
+  if (result.ok) revalidatePhotoPaths();
+  return result;
 }
 
 export async function uploadDailyEvidence(
   dailyLogId: string,
   formData: FormData,
 ): Promise<{ ok: true; ids: string[] } | { ok: false; error: string }> {
-  await requireRole(["student", "admin"]);
+  try {
+    await requireRole(["student", "admin"]);
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : "Not allowed.",
+    };
+  }
 
   const log = await prisma.dailyLog.findUnique({ where: { id: dailyLogId } });
   if (!log) return { ok: false, error: "Daily log not found." };

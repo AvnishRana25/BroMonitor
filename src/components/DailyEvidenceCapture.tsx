@@ -6,9 +6,11 @@ import {
   compressImageFiles,
   normalizeImageFile,
 } from "@/lib/imageCompress.client";
-import { postDailyPhotoUpload } from "@/lib/uploadDailyPhoto.client";
+import {
+  postDailyPhotoUpload,
+  postEnsureDailyLog,
+} from "@/lib/uploadDailyPhoto.client";
 import { deleteDailyPhoto } from "@/app/photos/actions";
-import { ensureDailyLogForDate } from "@/app/daily/actions";
 import { MAX_PHOTOS_PER_LOG } from "@/lib/photos.client";
 
 export type ExistingPhoto = {
@@ -59,16 +61,13 @@ export function DailyEvidenceCapture({
 
   const resolveLogId = useCallback(async (): Promise<string | null> => {
     if (dailyLogId) return dailyLogId;
-    try {
-      const { id } = await ensureDailyLogForDate(logDate);
-      onLogId(id);
-      return id;
-    } catch (e) {
-      setError(
-        e instanceof Error ? e.message : "Could not prepare log for upload.",
-      );
+    const res = await postEnsureDailyLog(logDate);
+    if (!res.ok) {
+      setError(res.error);
       return null;
     }
+    onLogId(res.id);
+    return res.id;
   }, [dailyLogId, logDate, onLogId]);
 
   const uploadFiles = useCallback(

@@ -180,23 +180,14 @@ export async function upsertDailyLog(formData: FormData) {
   return { id: log.id };
 }
 
-/** Create an empty shell log for a date so evidence photos can upload before the form is saved. */
+/** @deprecated Prefer POST /api/daily/ensure from the client. */
 export async function ensureDailyLogForDate(
   dateStr: string,
 ): Promise<{ id: string }> {
-  await requireRole(["student", "admin"]);
-  const date = startOfDay(parseLocalDate(dateStr));
-  const log = await prisma.dailyLog.upsert({
-    where: { date },
-    update: {},
-    create: {
-      date,
-      schoolHours: 0,
-      coachingHours: 0,
-      selfStudyHours: 0,
-    },
-  });
-  return { id: log.id };
+  const { ensureDailyLogShell } = await import("@/lib/evidenceUpload");
+  const result = await ensureDailyLogShell(dateStr);
+  if (!result.ok) throw new Error(result.error);
+  return { id: result.id };
 }
 
 export async function deleteDailyLog(id: string) {

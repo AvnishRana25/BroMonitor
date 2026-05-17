@@ -99,6 +99,13 @@ export async function savePhotoBytes(
 
   const buf = Buffer.from(bytes);
 
+  // Vercel has no persistent disk — local ./uploads/ "works" once then vanishes.
+  if (process.env.VERCEL && !isCloudinaryConfigured()) {
+    throw new PhotoValidationError(
+      "Photo storage requires Cloudinary on Vercel. Set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET in the project environment variables.",
+    );
+  }
+
   if (isCloudinaryConfigured()) {
     ensureCloudinary();
     const folder = opts.folder ?? "bromonitor/evidence";

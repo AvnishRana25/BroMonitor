@@ -14,12 +14,21 @@ type Props = {
   rows: Row[];
   hasPlan: boolean;
   canEditPlan: boolean;
+  pacePct?: number | null;
+  elapsedDays?: number;
 };
 
 // Compact horizontal bars: planned shown as faint, actual as solid color. Cap
 // the visual to 150% so a banner week doesn't squash the others, but show the
 // numeric value separately.
-export function PlanVsActual({ weekLabel, rows, hasPlan, canEditPlan }: Props) {
+export function PlanVsActual({
+  weekLabel,
+  rows,
+  hasPlan,
+  canEditPlan,
+  pacePct = null,
+  elapsedDays = 7,
+}: Props) {
   if (!hasPlan) {
     return (
       <div className="card p-5">
@@ -60,8 +69,28 @@ export function PlanVsActual({ weekLabel, rows, hasPlan, canEditPlan }: Props) {
             </span>
           </div>
           <div className="text-xs text-ink-faint mt-0.5">
-            {totalActual.toFixed(1)}h logged / {totalPlanned.toFixed(1)}h
-            planned ({totalPct}%)
+            {totalActual.toFixed(1)}h logged / {totalPlanned.toFixed(1)}h week
+            goal
+            {pacePct != null ? (
+              <>
+                {" "}
+                ·{" "}
+                <span
+                  className={
+                    pacePct >= 90
+                      ? "text-good"
+                      : pacePct >= 70
+                      ? "text-warn"
+                      : "text-bad"
+                  }
+                >
+                  {pacePct}% on pace
+                </span>{" "}
+                (day {elapsedDays}/7)
+              </>
+            ) : (
+              <> ({totalPct}% of week goal)</>
+            )}
           </div>
         </div>
         {canEditPlan && (

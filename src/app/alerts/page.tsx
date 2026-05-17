@@ -1,9 +1,11 @@
+import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { redirect } from "next/navigation";
 import { can, currentRole } from "@/lib/session";
 import { evaluateAlerts } from "@/lib/rules";
 import { AlertsView, type AlertRow } from "@/components/AlertsView";
 import { ReevalButton, ClearResolvedButton } from "./ClientButtons";
+import { Siren } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -74,23 +76,42 @@ export default async function AlertsPage() {
     }),
   ]);
 
+  const redCount = activeRows.filter((a) => a.severity === "red").length;
+  const warnCount = activeRows.filter((a) => a.severity === "warn").length;
+
   return (
-    <div className="space-y-6 max-w-4xl mx-auto w-full">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div>
-          <div className="text-sm text-ink-dim">
-            {activeRows.length} active · {snoozedRows.length} snoozed ·{" "}
-            {acknowledged.length} acknowledged · {resolved.length} recently
-            resolved
+    <div className="space-y-5 max-w-4xl mx-auto w-full pb-24 md:pb-6">
+      <div className="card p-4 sm:p-5 border-accent/25 bg-gradient-to-br from-accent/10 to-bg-card">
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div>
+            <div className="flex items-center gap-2 text-accent">
+              <Siren className="w-4 h-4" />
+              <span className="text-xs uppercase tracking-wider font-medium">
+                {role === "guardian" ? "Father" : "Admin"} — alerts
+              </span>
+            </div>
+            <h1 className="text-lg font-semibold mt-1">
+              {activeRows.length === 0
+                ? "All clear"
+                : `${redCount} red · ${warnCount} warn · ${activeRows.length - redCount - warnCount} info`}
+            </h1>
+            <p className="text-sm text-ink-dim mt-1 max-w-xl">
+              Each flag is a deterministic rule with a clear reason — not AI
+              guesswork. Snooze to hide temporarily; acknowledge once
+              you&apos;ve acted.
+            </p>
           </div>
-          <div className="text-xs text-ink-faint mt-0.5 max-w-xl">
-            Each alert is a rule with a clear reason — not AI guesswork. Snooze
-            to hide for a while, acknowledge once you&apos;ve handled it.
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+            <ReevalButton />
+            {can(role, "alert:delete") && <ClearResolvedButton />}
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <ReevalButton />
-          {can(role, "alert:delete") && <ClearResolvedButton />}
+        <div className="mt-4 flex flex-wrap gap-2 text-xs">
+          <QuickLink href="/daily">Daily logs</QuickLink>
+          <QuickLink href="/reports">Reports</QuickLink>
+          <QuickLink href="/plan">Weekly plan</QuickLink>
+          <QuickLink href="/doubts">Doubts</QuickLink>
+          <QuickLink href="/">Dashboard</QuickLink>
         </div>
       </div>
 
@@ -104,5 +125,22 @@ export default async function AlertsPage() {
         canDelete={can(role, "alert:delete")}
       />
     </div>
+  );
+}
+
+function QuickLink({
+  href,
+  children,
+}: {
+  href: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <Link
+      href={href}
+      className="chip hover:bg-accent/15 hover:border-accent/40 transition"
+    >
+      {children}
+    </Link>
   );
 }

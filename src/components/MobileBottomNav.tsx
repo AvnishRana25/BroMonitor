@@ -26,7 +26,11 @@ function tabsForRole(role: Role): Tab[] {
   if (role === "student") {
     return [
       { href: "/", label: "Home", icon: LayoutDashboard },
-      { href: "/daily/new", label: "Log", icon: CalendarDays },
+      {
+        href: "/daily/new",
+        label: "Log",
+        icon: CalendarDays,
+      },
       { href: "/doubts", label: "Doubts", icon: HelpCircle },
       { href: "/subjects", label: "Syllabus", icon: BookOpenCheck },
       { href: "/tests", label: "Tests", icon: ClipboardList },

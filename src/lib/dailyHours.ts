@@ -14,7 +14,7 @@ export function totalLoggedHours(log: LogHours): number {
   return log.schoolHours + log.coachingHours + log.selfStudyHours;
 }
 
-/** Per-subject self-study hours: split each day's selfStudyHours across entries. */
+/** Per-subject hours: split each day's total logged time across entry rows. */
 export function subjectHoursFromLogs(
   logs: LogWithEntries[],
   subjectId: string
@@ -24,7 +24,9 @@ export function subjectHoursFromLogs(
     const subEntries = log.entries.filter((e) => e.subjectId === subjectId);
     if (subEntries.length === 0) continue;
     const allCount = log.entries.length || 1;
-    total += (log.selfStudyHours * subEntries.length) / allCount;
+    const dayTotal =
+      log.schoolHours + log.coachingHours + log.selfStudyHours;
+    total += (dayTotal * subEntries.length) / allCount;
   }
   return total;
 }

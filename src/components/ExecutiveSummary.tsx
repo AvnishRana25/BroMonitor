@@ -8,6 +8,8 @@ type Props = {
   weekLabel: string;
   weekTrackedHours: number;
   weekGoalHours: number | null;
+  weekPlanPacePct?: number | null;
+  weekElapsedDays?: number;
   daysLogged7: number;
   redAlerts: number;
   warnAlerts: number;
@@ -26,6 +28,8 @@ export function ExecutiveSummary({
   weekLabel,
   weekTrackedHours,
   weekGoalHours,
+  weekPlanPacePct = null,
+  weekElapsedDays = 7,
   daysLogged7,
   redAlerts,
   warnAlerts,
@@ -34,9 +38,10 @@ export function ExecutiveSummary({
   canSeeAlerts,
 }: Props) {
   const planPct =
-    weekGoalHours && weekGoalHours > 0
+    weekPlanPacePct ??
+    (weekGoalHours && weekGoalHours > 0
       ? Math.round((weekTrackedHours / weekGoalHours) * 100)
-      : null;
+      : null);
   const planTone =
     planPct == null
       ? "text-ink"
@@ -64,7 +69,9 @@ export function ExecutiveSummary({
           value={`${weekTrackedHours.toFixed(1)}h`}
           sub={
             weekGoalHours
-              ? `${planPct ?? 0}% of ${weekGoalHours}h plan`
+              ? weekPlanPacePct != null
+                ? `${planPct ?? 0}% on pace (day ${weekElapsedDays}/7 · ${weekGoalHours}h week goal)`
+                : `${planPct ?? 0}% of ${weekGoalHours}h plan`
               : "no plan set"
           }
           valueClass={planTone}

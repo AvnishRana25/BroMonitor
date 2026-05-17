@@ -34,6 +34,11 @@ import {
 } from "@/components/GuardianCommentBox";
 import { evaluateAlerts } from "@/lib/rules";
 import { subjectHoursFromLogs, sumLoggedHours } from "@/lib/dailyHours";
+import {
+  planPacePct,
+  planTotalHours,
+  weekElapsedDays,
+} from "@/lib/studyPlan";
 import { SyllabusMasteryPanel, type SubjectMasteryData } from "@/components/SyllabusMasteryPanel";
 import { FatherTodayBrief } from "@/components/FatherTodayBrief";
 import { StudentTodayBrief } from "@/components/StudentTodayBrief";
@@ -253,9 +258,11 @@ export default async function DashboardPage() {
       ),
     };
   });
-  const weekGoalHours =
-    plan?.totalHoursGoal ??
-    (plan ? plan.subjects.reduce((s, x) => s + x.hoursGoal, 0) : null);
+  const weekGoalHours = plan ? planTotalHours(plan) : null;
+  const weekPlanPacePct =
+    plan && weekGoalHours
+      ? planPacePct(weekLoggedHoursMonStart, plan, monday, today)
+      : null;
 
   const weekLabel = `${fmtDate(monday)} – ${fmtDate(sunday)}`;
 
@@ -319,6 +326,8 @@ export default async function DashboardPage() {
         weekLabel={weekLabel}
         weekTrackedHours={weekLoggedHoursMonStart}
         weekGoalHours={weekGoalHours}
+        weekPlanPacePct={weekPlanPacePct}
+        weekElapsedDays={weekElapsedDays(monday, today)}
         daysLogged7={daysLogged7}
         redAlerts={redAlerts}
         warnAlerts={warnAlerts}
@@ -335,6 +344,8 @@ export default async function DashboardPage() {
             rows={planRows}
             hasPlan={!!plan}
             canEditPlan={canEditPlan}
+            pacePct={weekPlanPacePct}
+            elapsedDays={weekElapsedDays(monday, today)}
           />
         </div>
         {canSeeAlerts && (

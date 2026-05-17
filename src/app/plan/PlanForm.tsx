@@ -25,21 +25,49 @@ export function PlanForm({
   weekStartValue,
   weekLabel,
   existing,
+  copyFromPrev = null,
 }: {
   subjects: Subject[];
   weekStartValue: string; // YYYY-MM-DD of Monday
   weekLabel: string;
   existing: ExistingPlan | null;
+  copyFromPrev?: ExistingPlan | null;
 }) {
   const router = useRouter();
   const [submitting, setSubmitting] = useState(false);
+  const seed = existing ?? copyFromPrev;
 
   const [bySubject, setBySubject] = useState<Record<string, number>>(
     Object.fromEntries(
-      subjects.map((s) => [s.id, existing?.byId[s.id] ?? 0])
+      subjects.map((s) => [s.id, seed?.byId[s.id] ?? 0])
     )
   );
+  const [totalGoal, setTotalGoal] = useState<string>(
+    seed?.totalHoursGoal != null ? String(seed.totalHoursGoal) : "",
+  );
+  const [testsGoal, setTestsGoal] = useState(String(seed?.testsGoal ?? 0));
+  const [revisionGoal, setRevisionGoal] = useState(
+    String(seed?.revisionSessionsGoal ?? 0),
+  );
+  const [planNotes, setPlanNotes] = useState(seed?.notes ?? "");
   const subtotal = Object.values(bySubject).reduce((a, b) => a + (b || 0), 0);
+
+  function applyCopyFromPrev() {
+    if (!copyFromPrev) return;
+    setBySubject(
+      Object.fromEntries(
+        subjects.map((s) => [s.id, copyFromPrev.byId[s.id] ?? 0]),
+      ),
+    );
+    setTotalGoal(
+      copyFromPrev.totalHoursGoal != null
+        ? String(copyFromPrev.totalHoursGoal)
+        : "",
+    );
+    setTestsGoal(String(copyFromPrev.testsGoal));
+    setRevisionGoal(String(copyFromPrev.revisionSessionsGoal));
+    setPlanNotes(copyFromPrev.notes ?? "");
+  }
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -62,11 +90,19 @@ export function PlanForm({
           <div className="text-xs text-ink-faint">{weekLabel}</div>
         </div>
         <div className="text-xs text-ink-faint mt-1">
-          Set the per-subject hour targets for this week. The dashboard will
-          compare these against actual tracked time and fire a{" "}
-          <span className="text-warn">plan_behind</span> alert if he&apos;s
-          falling more than 30% short for the days elapsed.
+          Per-subject targets are compared to total logged hours (school +
+          coaching + self-study). The &quot;behind plan&quot; alert fires when
+          pace drops below 70% of the pro-rated week goal.
         </div>
+        {!existing && copyFromPrev && (
+          <button
+            type="button"
+            onClick={applyCopyFromPrev}
+            className="btn-ghost text-xs mt-3"
+          >
+            Copy last week&apos;s targets
+          </button>
+        )}
       </div>
 
       <div className="card p-5">
@@ -114,7 +150,9 @@ export function PlanForm({
               step="0.5"
               min="0"
               name="totalHoursGoal"
-              defaultValue={existing?.totalHoursGoal ?? subtotal}
+              value={totalGoal}
+              onChange={(e) => setTotalGoal(e.target.value)}
+              placeholder={String(subtotal)}
               className="input"
             />
             <div className="text-[10px] text-ink-faint mt-1">
@@ -127,7 +165,8 @@ export function PlanForm({
               type="number"
               min="0"
               name="testsGoal"
-              defaultValue={existing?.testsGoal ?? 0}
+              value={testsGoal}
+              onChange={(e) => setTestsGoal(e.target.value)}
               className="input"
             />
           </div>
@@ -137,7 +176,8 @@ export function PlanForm({
               type="number"
               min="0"
               name="revisionSessionsGoal"
-              defaultValue={existing?.revisionSessionsGoal ?? 0}
+              value={revisionGoal}
+              onChange={(e) => setRevisionGoal(e.target.value)}
               className="input"
             />
           </div>
@@ -147,7 +187,8 @@ export function PlanForm({
           <textarea
             name="notes"
             rows={2}
-            defaultValue={existing?.notes ?? ""}
+            value={planNotes}
+            onChange={(e) => setPlanNotes(e.target.value)}
             className="input resize-none"
             placeholder="e.g. focus on rotational dynamics + organic chemistry naming"
           />

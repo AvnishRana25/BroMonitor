@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { parseLocalDate, startOfDay, toDateInputValue } from "@/lib/utils";
+import { resolveNewLogDate } from "@/lib/dailyLogDate";
 import { DailyLogForm } from "./DailyLogForm";
 import { currentRole, can } from "@/lib/session";
 import { photoUrl } from "@/lib/photos";
@@ -9,9 +9,8 @@ export default async function NewDailyLogPage({
 }: {
   searchParams: { date?: string };
 }) {
-  const date = searchParams.date
-    ? startOfDay(parseLocalDate(searchParams.date))
-    : startOfDay(new Date());
+  const resolved = await resolveNewLogDate(searchParams.date);
+  const date = resolved.date;
 
   const [subjects, existing] = await Promise.all([
     prisma.subject.findMany({
@@ -40,6 +39,7 @@ export default async function NewDailyLogPage({
   return (
     <div className="max-w-3xl mx-auto w-full">
       <DailyLogForm
+        key={resolved.dateStr}
         subjects={subjects.map((s) => ({
           id: s.id,
           name: s.name,
@@ -51,7 +51,10 @@ export default async function NewDailyLogPage({
             topics: c.topics.map((t) => ({ id: t.id, name: t.name })),
           })),
         }))}
-        defaultDate={toDateInputValue(date)}
+        defaultDate={resolved.dateStr}
+        isEditing={!!existing}
+        suggestedBackfill={resolved.suggestedBackfill}
+        allRecentFilled={resolved.allRecentFilled}
         existing={
           existing
             ? {

@@ -89,9 +89,16 @@ export function AlertsView({
     });
   }, [filteredActive]);
 
+  const hasActive = active.length > 0;
+
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-3 gap-2 sm:gap-3">
+      {hasActive && (
+        <p className="text-xs text-ink-faint md:hidden">
+          Tap a card to acknowledge, snooze, or jump to the related page.
+        </p>
+      )}
+      <div className="grid grid-cols-3 gap-2 sm:gap-3 sticky top-14 z-10 bg-bg/95 backdrop-blur py-2 -mx-1 px-1">
         <SummaryPill label="Red" value={counts.red} tone="bad" />
         <SummaryPill label="Warn" value={counts.warn} tone="warn" />
         <SummaryPill label="Info" value={counts.info} tone="accent" />

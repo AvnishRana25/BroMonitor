@@ -3,6 +3,7 @@
 
 import "server-only";
 import { prisma } from "@/lib/db";
+import { planTotalHours } from "@/lib/studyPlan";
 import {
   addDays,
   fmtDate,
@@ -152,9 +153,7 @@ export async function gatherWeeklySnapshot(monday: Date) {
     (d) => d.logged && d.photos === 0
   ).length;
 
-  const goalHours =
-    plan?.totalHoursGoal ??
-    (plan ? plan.subjects.reduce((s, x) => s + x.hoursGoal, 0) : null);
+  const goalHours = plan ? planTotalHours(plan) : null;
 
   return {
     weekLabel: `${fmtDate(monday)} – ${fmtDate(sunday)}`,

@@ -1,6 +1,12 @@
 // Human labels + deep links for the rules engine. Keeps AlertCard and the
 // alerts page dumb — all "what does this mean / where do I go?" lives here.
 
+import { todayLocalInputValue } from "@/lib/utils";
+
+function todayLogHref() {
+  return `/daily/new?date=${todayLocalInputValue()}`;
+}
+
 export type AlertKind =
   | "no_recent_study"
   | "test_declining"
@@ -52,12 +58,12 @@ export const ALERT_KIND_META: Record<
   burnout_precursor: {
     label: "Burnout risk",
     category: "Wellbeing",
-    action: () => ({ label: "Today's log", href: "/daily/new" }),
+    action: () => ({ label: "Today's log", href: todayLogHref() }),
   },
   low_daily_evidence: {
     label: "Missing evidence",
     category: "Trust",
-    action: () => ({ label: "Add evidence", href: "/daily/new" }),
+    action: () => ({ label: "Add evidence", href: todayLogHref() }),
   },
   homework_backlog: {
     label: "Homework pile-up",
@@ -67,22 +73,22 @@ export const ALERT_KIND_META: Record<
   ritual_incomplete: {
     label: "Ritual incomplete",
     category: "Consistency",
-    action: () => ({ label: "Finish today's log", href: "/daily/new" }),
+    action: () => ({ label: "Finish today's log", href: todayLogHref() }),
   },
   low_energy_streak: {
     label: "Low energy",
     category: "Wellbeing",
-    action: () => ({ label: "Today's log", href: "/daily/new" }),
+    action: () => ({ label: "Today's log", href: todayLogHref() }),
   },
   weekend_log_slip: {
     label: "Weekend logging",
     category: "Consistency",
-    action: () => ({ label: "Log now", href: "/daily/new" }),
+    action: () => ({ label: "Log now", href: todayLogHref() }),
   },
   log_gap: {
     label: "Logging gap",
     category: "Consistency",
-    action: () => ({ label: "Log today", href: "/daily/new" }),
+    action: () => ({ label: "Log today", href: todayLogHref() }),
   },
   plan_behind: {
     label: "Behind weekly plan",
@@ -92,12 +98,12 @@ export const ALERT_KIND_META: Record<
   log_without_evidence: {
     label: "No photos today",
     category: "Trust",
-    action: () => ({ label: "Add photos", href: "/daily/new" }),
+    action: () => ({ label: "Add photos", href: todayLogHref() }),
   },
   weak_reflection: {
     label: "Empty reflection",
     category: "Reflection",
-    action: () => ({ label: "Write reflection", href: "/daily/new" }),
+    action: () => ({ label: "Write reflection", href: todayLogHref() }),
   },
 };
 

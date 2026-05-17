@@ -13,6 +13,13 @@
 
 import { prisma } from "@/lib/db";
 import {
+  isPlanBehind,
+  planBehindSeverity,
+  planExpectedHoursByElapsed,
+  planTotalHours,
+  weekElapsedDays,
+} from "@/lib/studyPlan";
+import {
   startOfDay,
   weekStart,
   addDays,
@@ -357,30 +364,25 @@ function logGap(ctx: Ctx): RuleOutput[] {
 
 function planBehind(ctx: Ctx): RuleOutput[] {
   if (!ctx.plan) return [];
-  const elapsedDays = Math.min(
-    7,
-    Math.max(
-      1,
-      Math.floor((ctx.today.getTime() - ctx.weekMon.getTime()) / 86400000) + 1
-    )
-  );
+  const elapsedDays = weekElapsedDays(ctx.weekMon, ctx.today);
   if (elapsedDays < 3) return []; // too early to call it
   const actualTracked = ctx.weekLogs.reduce(
     (s, l) => s + l.schoolHours + l.coachingHours + l.selfStudyHours,
     0
   );
-  const goalTotal =
-    ctx.plan.totalHoursGoal ??
-    ctx.plan.subjects.reduce((s, x) => s + x.hoursGoal, 0);
+  const goalTotal = planTotalHours(ctx.plan);
   if (!goalTotal || goalTotal <= 0) return [];
-  // Pro-rate the goal by elapsed days.
-  const expectedSoFar = (goalTotal * elapsedDays) / 7;
-  if (actualTracked >= expectedSoFar * 0.7) return [];
+  const expectedSoFar = planExpectedHoursByElapsed(
+    ctx.plan,
+    ctx.weekMon,
+    ctx.today,
+  );
+  if (!isPlanBehind(ctx.plan, actualTracked, ctx.weekMon, ctx.today)) return [];
   const shortfall = expectedSoFar - actualTracked;
   return [
     {
       kind: "plan_behind",
-      severity: actualTracked < expectedSoFar * 0.4 ? "red" : "warn",
+      severity: planBehindSeverity(actualTracked, expectedSoFar),
       dedupeKey: `plan_behind:${toDateInputValue(ctx.weekMon)}`,
       title: `Behind plan: ${actualTracked.toFixed(
         1

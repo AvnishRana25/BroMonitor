@@ -94,6 +94,9 @@ export function DailyLogForm({
   initialDailyLogId = null,
   canUploadEvidence = true,
   canDeleteEvidence = false,
+  isEditing = false,
+  suggestedBackfill = false,
+  allRecentFilled = false,
 }: {
   subjects: Subject[];
   defaultDate: string;
@@ -102,6 +105,9 @@ export function DailyLogForm({
   initialDailyLogId?: string | null;
   canUploadEvidence?: boolean;
   canDeleteEvidence?: boolean;
+  isEditing?: boolean;
+  suggestedBackfill?: boolean;
+  allRecentFilled?: boolean;
 }) {
   const router = useRouter();
   const [dailyLogId, setDailyLogId] = useState<string | null>(initialDailyLogId);
@@ -260,17 +266,40 @@ export function DailyLogForm({
     router.refresh();
   }
 
+  function onDateChange(next: string) {
+    setDate(next);
+    router.push(`/daily/new?date=${next}`);
+  }
+
   return (
     <form onSubmit={onSubmit} className="space-y-5 pb-24 md:pb-0">
+      {suggestedBackfill && (
+        <p className="text-sm text-accent bg-accent/10 border border-accent/30 rounded-lg px-3 py-2">
+          Today is already logged. This form opens the most recent day without
+          a log — change the date below to log a different day.
+        </p>
+      )}
+      {allRecentFilled && (
+        <p className="text-sm text-warn bg-warn/10 border border-warn/30 rounded-lg px-3 py-2">
+          The last 30 days all have logs. Pick a date below to edit an existing
+          log, or add a new entry for today.
+        </p>
+      )}
       <div className="card p-4 sm:p-5 border-accent/25 bg-accent/5">
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
           <div>
             <div className="text-base font-semibold">
-              Today&apos;s log (~2 min)
+              {isEditing ? "Edit daily log" : "New daily log"}
+              {!isToday && (
+                <span className="text-xs font-normal text-ink-faint ml-2">
+                  (~2 min)
+                </span>
+              )}
             </div>
             <p className="text-xs text-ink-faint mt-0.5">
-              Required: photo + one chapter/topic. Hours and reflection are
-              optional.
+              {isEditing
+                ? "Update this day’s study record, photos, and reflection."
+                : "Required: photo + one chapter/topic. Hours and reflection are optional."}
             </p>
           </div>
           <div className="w-full sm:w-auto">
@@ -280,7 +309,7 @@ export function DailyLogForm({
               name="date"
               required
               value={date}
-              onChange={(e) => setDate(e.target.value)}
+              onChange={(e) => onDateChange(e.target.value)}
               className="input"
             />
           </div>

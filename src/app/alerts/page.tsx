@@ -18,6 +18,8 @@ function toRow(a: {
   acknowledgedAt: Date | null;
   acknowledgedBy: string | null;
   resolvedAt: Date | null;
+  snoozedUntil: Date | null;
+  snoozedBy: string | null;
   payload: string | null;
 }): AlertRow {
   return {
@@ -31,6 +33,8 @@ function toRow(a: {
     acknowledgedAt: a.acknowledgedAt?.toISOString() ?? null,
     acknowledgedBy: a.acknowledgedBy,
     resolvedAt: a.resolvedAt?.toISOString() ?? null,
+    snoozedUntil: a.snoozedUntil?.toISOString() ?? null,
+    snoozedBy: a.snoozedBy,
     canAck: true,
     payloadJson: a.payload,
   };
@@ -44,9 +48,21 @@ export default async function AlertsPage() {
 
   await evaluateAlerts();
 
-  const [active, acknowledged, resolved] = await Promise.all([
+  const now = new Date();
+  const [activeRows, snoozedRows, acknowledged, resolved] = await Promise.all([
     prisma.alert.findMany({
-      where: { resolvedAt: null, acknowledgedAt: null },
+      where: {
+        resolvedAt: null,
+        acknowledgedAt: null,
+        OR: [{ snoozedUntil: null }, { snoozedUntil: { lt: now } }],
+      },
+    }),
+    prisma.alert.findMany({
+      where: {
+        resolvedAt: null,
+        acknowledgedAt: null,
+        snoozedUntil: { gte: now },
+      },
     }),
     prisma.alert.findMany({
       where: { resolvedAt: null, acknowledgedAt: { not: null } },
@@ -63,13 +79,13 @@ export default async function AlertsPage() {
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <div className="text-sm text-ink-dim">
-            {active.length} active · {acknowledged.length} acknowledged ·{" "}
-            {resolved.length} recently resolved
+            {activeRows.length} active · {snoozedRows.length} snoozed ·{" "}
+            {acknowledged.length} acknowledged · {resolved.length} recently
+            resolved
           </div>
           <div className="text-xs text-ink-faint mt-0.5 max-w-xl">
-            Each alert is a rule with a clear reason — not AI guesswork. Use the
-            action link, talk it through, then acknowledge so you know what
-            you&apos;ve already covered.
+            Each alert is a rule with a clear reason — not AI guesswork. Snooze
+            to hide for a while, acknowledge once you&apos;ve handled it.
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -79,9 +95,12 @@ export default async function AlertsPage() {
       </div>
 
       <AlertsView
-        active={active.map(toRow)}
+        active={activeRows.map(toRow)}
+        snoozed={snoozedRows.map(toRow)}
         acknowledged={acknowledged.map(toRow)}
         resolved={resolved.map((a) => ({ ...toRow(a), canAck: false }))}
+        canAck={can(role, "alert:ack")}
+        canSnooze={can(role, "alert:snooze")}
         canDelete={can(role, "alert:delete")}
       />
     </div>

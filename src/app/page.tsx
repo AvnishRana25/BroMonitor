@@ -127,7 +127,11 @@ export default async function DashboardPage() {
     // Severity strings are coincidentally alphabetised the right way:
     // 'info' < 'red' < 'warn'. That's wrong; sort manually.
     prisma.alert.findMany({
-      where: { resolvedAt: null, acknowledgedAt: null },
+      where: {
+        resolvedAt: null,
+        acknowledgedAt: null,
+        OR: [{ snoozedUntil: null }, { snoozedUntil: { lt: new Date() } }],
+      },
     }),
     // General-scope father notes (the "Father's notes" feed).
     prisma.guardianComment.findMany({
@@ -377,7 +381,10 @@ export default async function DashboardPage() {
                       acknowledgedAt={null}
                       acknowledgedBy={null}
                       resolvedAt={null}
+                      snoozedUntil={null}
+                      snoozedBy={null}
                       canAck={canAckAlerts}
+                      canSnooze={canAckAlerts}
                       canDelete={canDeleteAlerts}
                       payloadJson={a.payload}
                     />

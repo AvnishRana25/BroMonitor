@@ -6,26 +6,47 @@ import {
   BookOpenCheck,
   CalendarDays,
   ClipboardList,
+  HelpCircle,
   LayoutDashboard,
+  Siren,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Role } from "@/lib/auth";
 
-const tabs: {
+type Tab = {
   href: string;
   label: string;
   icon: typeof LayoutDashboard;
   roles?: Role[];
-}[] = [
-  { href: "/", label: "Home", icon: LayoutDashboard },
-  { href: "/daily/new", label: "Log", icon: CalendarDays, roles: ["student", "admin"] },
-  { href: "/subjects", label: "Syllabus", icon: BookOpenCheck },
-  { href: "/tests", label: "Tests", icon: ClipboardList },
-];
+};
+
+// Up to 5 tabs comfortably fit on a phone. The set differs by role:
+//   - Brother (student): Home / Log / Doubts / Subjects / Tests
+//   - Father (guardian): Home / Daily / Doubts / Tests / Alerts
+//   - Admin: same as guardian, but "Doubts" is also there.
+// The Log/Doubts entry points are the two things either person does most.
+function tabsForRole(role: Role): Tab[] {
+  if (role === "student") {
+    return [
+      { href: "/", label: "Home", icon: LayoutDashboard },
+      { href: "/daily/new", label: "Log", icon: CalendarDays },
+      { href: "/doubts", label: "Doubts", icon: HelpCircle },
+      { href: "/subjects", label: "Syllabus", icon: BookOpenCheck },
+      { href: "/tests", label: "Tests", icon: ClipboardList },
+    ];
+  }
+  return [
+    { href: "/", label: "Home", icon: LayoutDashboard },
+    { href: "/daily", label: "Logs", icon: CalendarDays },
+    { href: "/doubts", label: "Doubts", icon: HelpCircle },
+    { href: "/tests", label: "Tests", icon: ClipboardList },
+    { href: "/alerts", label: "Alerts", icon: Siren },
+  ];
+}
 
 export function MobileBottomNav({ role }: { role: Role }) {
   const pathname = usePathname();
-  const items = tabs.filter((t) => !t.roles || t.roles.includes(role));
+  const items = tabsForRole(role);
 
   return (
     <nav
@@ -45,7 +66,7 @@ export function MobileBottomNav({ role }: { role: Role }) {
               href={t.href}
               className={cn(
                 "flex flex-1 flex-col items-center justify-center gap-0.5 py-2.5 min-h-[52px] text-[10px] font-medium transition",
-                active ? "text-accent" : "text-ink-faint"
+                active ? "text-accent" : "text-ink-faint",
               )}
             >
               <Icon className={cn("w-5 h-5", active && "text-accent")} />

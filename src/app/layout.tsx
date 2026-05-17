@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { Sidebar } from "@/components/Sidebar";
 import { TopBar } from "@/components/TopBar";
@@ -10,6 +10,23 @@ export const metadata: Metadata = {
   title: "BroMonitor — Class 11 progress tracker",
   description:
     "A guardian dashboard to monitor daily school and coaching progress.",
+  // The PWA manifest at /manifest.webmanifest lets the app be installed to
+  // home screen on iOS / Android — useful for the father and the brother to
+  // open it like a native app from any device on any network.
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    title: "BroMonitor",
+    statusBarStyle: "black-translucent",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#0b0d12",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+  viewportFit: "cover",
 };
 
 export const dynamic = "force-dynamic";

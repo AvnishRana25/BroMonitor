@@ -579,6 +579,7 @@ export async function evaluateAlerts(): Promise<{
 
   const updates: Array<Promise<unknown>> = [];
   const creates: Array<RuleOutput> = [];
+  const now = new Date();
 
   for (const out of outputs) {
     const existing = existingByKey.get(out.dedupeKey);
@@ -586,9 +587,14 @@ export async function evaluateAlerts(): Promise<{
       creates.push(out);
       continue;
     }
+    // Snoozed rows: the user explicitly asked us not to nag them about this
+    // until `snoozedUntil`. Don't reopen, don't refresh — just leave it alone.
+    if (existing.snoozedUntil && existing.snoozedUntil.getTime() > now.getTime()) {
+      continue;
+    }
     const payloadJson = out.payload ? JSON.stringify(out.payload) : null;
     if (existing.resolvedAt) {
-      // Re-trigger after resolution: reopen + clear ack.
+      // Re-trigger after resolution: reopen + clear ack/snooze.
       updates.push(
         prisma.alert.update({
           where: { id: existing.id },
@@ -602,6 +608,8 @@ export async function evaluateAlerts(): Promise<{
             resolvedAt: null,
             acknowledgedAt: null,
             acknowledgedBy: null,
+            snoozedUntil: null,
+            snoozedBy: null,
           },
         }),
       );
@@ -661,9 +669,14 @@ export async function evaluateAlerts(): Promise<{
 
   await Promise.all(updates);
 
-  // 3. Return live counts for the dashboard chrome.
+  // 3. Return live counts for the dashboard chrome — snoozed rows count as
+  // 'parked' and are excluded from the active total.
   const active = await prisma.alert.findMany({
-    where: { resolvedAt: null, acknowledgedAt: null },
+    where: {
+      resolvedAt: null,
+      acknowledgedAt: null,
+      OR: [{ snoozedUntil: null }, { snoozedUntil: { lt: now } }],
+    },
     select: { severity: true },
   });
 

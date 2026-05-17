@@ -4,8 +4,12 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  // Pooled connection used by the app at runtime (Vercel <-> Neon pooler).
+  url       = env("DATABASE_URL")
+  // Direct connection for prisma migrate / introspect. On Neon this is the
+  // non-pooled host; locally point both at the same Postgres if you want.
+  directUrl = env("DIRECT_DATABASE_URL")
 }
 
 model Student {
@@ -137,6 +141,10 @@ model GuardianComment {
 // every dashboard render. When the underlying condition stops triggering, the
 // alert is marked resolvedAt; if it triggers again later we clear resolvedAt
 // and the acknowledgement so it re-appears in father's queue.
+//
+// `snoozedUntil` lets father say "remind me tomorrow / next week" — the
+// dashboard hides snoozed rows until the deadline passes, and the rules
+// engine refuses to touch a row while it's snoozed.
 model Alert {
   id             String    @id @default(cuid())
   kind           String    // 'no_recent_study' | 'test_declining' | ...
@@ -151,10 +159,13 @@ model Alert {
   acknowledgedAt DateTime?
   acknowledgedBy String?   // role label
   resolvedAt     DateTime?
+  snoozedUntil   DateTime?
+  snoozedBy      String?
 
   // The dashboard filters by (resolvedAt is null, acknowledgedAt is null)
   // every single render. Sparse but worth it as Alert grows.
   @@index([resolvedAt, acknowledgedAt])
+  @@index([snoozedUntil])
 }
 
 // Admin-dismissed alerts: suppresses a dedupeKey so the rules engine won't recreate it.
@@ -172,7 +183,7 @@ model AiReport {
   kind       String
   scopeKey   String
   title      String
-  body       String   // markdown / plain-text
+  body       String
   metadata   String?  // JSON: structured data the prompt was built from
   model      String?  // gemini model used
   tokensIn   Int?
@@ -187,14 +198,20 @@ model AiReport {
 }
 
 // Photo evidence attached to a daily log (notebook pages, solved problems).
+// On Vercel we can't use the local filesystem, so the actual bytes live on
+// Cloudinary. We keep `publicId` (the Cloudinary handle, used for deletion +
+// signed URLs) and `url` (the absolute https URL we serve to <img>).
+// `filename` / `sha256` are retained for historical local-storage rows.
 model Photo {
   id         String   @id @default(cuid())
   dailyLogId String
   dailyLog   DailyLog @relation(fields: [dailyLogId], references: [id], onDelete: Cascade)
-  filename   String
+  publicId   String?  // Cloudinary public_id (preferred)
+  url        String?  // Cloudinary secure_url
+  filename   String?  // legacy local path (kept for old rows)
   mime       String
   size       Int
-  sha256     String
+  sha256     String?
   createdAt  DateTime @default(now())
 
   @@index([dailyLogId])
@@ -277,21 +294,27 @@ model UpcomingTestSubject {
   chapters       String? // comma-separated chapter names included in the syllabus
 }
 
+// Class-11 doubts. Can optionally include an image (Cloudinary-hosted) of
+// the question — the AI doubt solver passes it to Gemini Vision so it can
+// read the problem statement even if the brother only typed "solve this".
 model Doubt {
-  id            String    @id @default(cuid())
-  raisedAt      DateTime  @default(now())
-  resolvedAt    DateTime?
-  subjectId     String
-  subject       Subject   @relation(fields: [subjectId], references: [id])
-  chapter       String?
-  topic         String?
-  question      String
-  resolvedBy    String? // teacher | peer | self | online | ai
-  status        String    @default("open") // open | resolved
-  aiAnswer      String?
-  aiConfident   Boolean?  // false = Gemini flagged low confidence
-  aiAnsweredAt  DateTime?
-  aiModel       String?
+  id              String    @id @default(cuid())
+  raisedAt        DateTime  @default(now())
+  resolvedAt      DateTime?
+  subjectId       String
+  subject         Subject   @relation(fields: [subjectId], references: [id])
+  chapter         String?
+  topic           String?
+  question        String
+  imagePublicId   String?
+  imageUrl        String?
+  imageMime       String?
+  resolvedBy      String?   // teacher | peer | self | online | ai
+  status          String    @default("open") // open | resolved
+  aiAnswer        String?
+  aiConfident     Boolean?  // false = Gemini flagged low confidence
+  aiAnsweredAt    DateTime?
+  aiModel         String?
 
   @@index([status, raisedAt])
   @@index([subjectId])

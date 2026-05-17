@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { DoubtsView } from "./DoubtsView";
 import { isGeminiConfigured } from "@/lib/ai/gemini";
+import { isCloudinaryConfigured } from "@/lib/photos";
 import { can, currentRole } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
@@ -18,6 +19,7 @@ export default async function DoubtsPage() {
   return (
     <DoubtsView
       geminiConfigured={isGeminiConfigured()}
+      cloudinaryConfigured={isCloudinaryConfigured()}
       canDelete={can(role, "doubt:delete")}
       subjects={subjects.map((s) => ({
         id: s.id,
@@ -38,6 +40,7 @@ export default async function DoubtsPage() {
         aiConfident: d.aiConfident,
         aiAnsweredAt: d.aiAnsweredAt?.toISOString() ?? null,
         aiModel: d.aiModel,
+        imageUrl: d.imageUrl,
         subject: {
           id: d.subject.id,
           short: d.subject.short,

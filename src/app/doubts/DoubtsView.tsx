@@ -1,14 +1,17 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
+import Image from "next/image";
 import {
   Check,
   CheckCircle2,
+  ImageIcon,
   Loader2,
   Plus,
   RotateCcw,
   Sparkles,
   Trash2,
+  X,
 } from "lucide-react";
 import { SubjectPill } from "@/components/SubjectPill";
 import { fmtDate, fmtDateTime } from "@/lib/utils";
@@ -37,6 +40,7 @@ type Doubt = {
   aiConfident: boolean | null;
   aiAnsweredAt: string | null;
   aiModel: string | null;
+  imageUrl: string | null;
   subject: { id: string; short: string; color: string };
 };
 
@@ -44,76 +48,172 @@ export function DoubtsView({
   subjects,
   doubts,
   geminiConfigured,
+  cloudinaryConfigured,
   canDelete,
 }: {
   subjects: Subject[];
   doubts: Doubt[];
   geminiConfigured: boolean;
+  cloudinaryConfigured: boolean;
   canDelete: boolean;
 }) {
   const [filter, setFilter] = useState<"open" | "resolved" | "all">("open");
   const [pending, startTransition] = useTransition();
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
 
   const filtered = doubts.filter((d) =>
     filter === "all" ? true : d.status === filter,
   );
 
+  function onPickImage(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0] ?? null;
+    if (!f) {
+      setImagePreview(null);
+      return;
+    }
+    if (f.size > 8 * 1024 * 1024) {
+      setFormError(`Image too large (${(f.size / 1024 / 1024).toFixed(1)} MB). Max 8 MB.`);
+      e.target.value = "";
+      setImagePreview(null);
+      return;
+    }
+    setFormError(null);
+    setImagePreview(URL.createObjectURL(f));
+  }
+
+  function clearImage() {
+    if (fileRef.current) fileRef.current.value = "";
+    if (imagePreview) URL.revokeObjectURL(imagePreview);
+    setImagePreview(null);
+  }
+
   async function onCreate(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const fd = new FormData(e.currentTarget);
-    e.currentTarget.reset();
-    startTransition(() => {
-      void createDoubt(fd);
+    setFormError(null);
+    const form = e.currentTarget;
+    const fd = new FormData(form);
+    startTransition(async () => {
+      try {
+        await createDoubt(fd);
+        form.reset();
+        clearImage();
+      } catch (err) {
+        setFormError(err instanceof Error ? err.message : "Could not add doubt.");
+      }
     });
   }
 
   return (
     <div className="space-y-5">
-      {/* Add doubt */}
-      <form onSubmit={onCreate} className="card p-5 space-y-3">
-        <div className="text-base font-semibold">Add a doubt</div>
+      <form ref={formRef} onSubmit={onCreate} className="card p-5 space-y-3">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="text-base font-semibold">Add a doubt</div>
+          {geminiConfigured && (
+            <span className="text-[11px] text-ink-faint flex items-center gap-1.5">
+              <Sparkles className="w-3 h-3 text-accent" />
+              First-pass AI answer available after adding
+            </span>
+          )}
+        </div>
+
         <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-          <select name="subjectId" required className="input">
+          <select
+            name="subjectId"
+            required
+            className="input"
+            defaultValue=""
+            aria-label="Subject"
+          >
+            <option value="" disabled>
+              Subject…
+            </option>
             {subjects.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.name}
               </option>
             ))}
           </select>
-          <input
-            name="chapter"
-            className="input"
-            placeholder="Chapter (optional)"
-          />
-          <input
-            name="topic"
-            className="input"
-            placeholder="Topic (optional)"
-          />
+          <input name="chapter" className="input" placeholder="Chapter (optional)" />
+          <input name="topic" className="input" placeholder="Topic (optional)" />
           <button
             type="submit"
             disabled={pending}
             className="btn-primary justify-self-end sm:justify-self-stretch"
           >
-            <Plus className="w-4 h-4" /> Add
+            {pending ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Plus className="w-4 h-4" />
+            )}
+            Add
           </button>
-          <input
+          <textarea
             name="question"
-            required
-            className="input sm:col-span-4"
-            placeholder="What's the doubt? (e.g. why is friction static below threshold?)"
+            className="input sm:col-span-4 min-h-[72px] resize-y"
+            placeholder="Type the doubt… (or attach a photo of the problem below)"
+            maxLength={2000}
           />
         </div>
-        {geminiConfigured && (
-          <p className="text-[11px] text-ink-faint flex items-center gap-1.5">
-            <Sparkles className="w-3 h-3" />
-            After adding, hit &quot;Ask AI&quot; for a first-pass Class-11
-            explanation while you wait for a teacher.
-          </p>
+
+        <div className="flex items-start gap-3 flex-wrap">
+          <label
+            className={`btn-ghost text-xs cursor-pointer ${
+              !cloudinaryConfigured ? "opacity-50 cursor-not-allowed" : ""
+            }`}
+            title={
+              cloudinaryConfigured
+                ? "Snap or pick a photo of the question"
+                : "Set CLOUDINARY_* in .env to enable image uploads"
+            }
+          >
+            <ImageIcon className="w-3.5 h-3.5" />
+            {imagePreview ? "Change photo" : "Attach photo"}
+            <input
+              ref={fileRef}
+              name="image"
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={onPickImage}
+              disabled={!cloudinaryConfigured}
+            />
+          </label>
+          {imagePreview && (
+            <div className="relative inline-block">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={imagePreview}
+                alt="preview"
+                className="h-20 w-20 object-cover rounded-lg border border-border-soft"
+              />
+              <button
+                type="button"
+                onClick={clearImage}
+                className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-bg border border-border-soft flex items-center justify-center text-ink-faint hover:text-bad"
+                aria-label="Remove image"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          )}
+          {!cloudinaryConfigured && (
+            <p className="text-[11px] text-ink-faint self-center">
+              Image uploads need Cloudinary credentials.
+            </p>
+          )}
+        </div>
+
+        {formError && (
+          <div className="text-xs text-bad bg-bad/10 border border-bad/30 rounded-lg px-2.5 py-1.5">
+            {formError}
+          </div>
         )}
       </form>
 
-      {/* Filter */}
       <div className="flex items-center gap-2">
         {(["open", "resolved", "all"] as const).map((f) => (
           <button
@@ -132,7 +232,6 @@ export function DoubtsView({
         ))}
       </div>
 
-      {/* List */}
       {filtered.length === 0 ? (
         <div className="card p-6 text-center text-sm text-ink-faint">
           {filter === "open" ? "No open doubts. Nice." : "Nothing here."}
@@ -165,14 +264,37 @@ function DoubtRow({
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(!!d.aiAnswer);
+  const [imgOpen, setImgOpen] = useState(false);
 
   return (
     <div className="card p-4">
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div className="flex items-start gap-3 min-w-0 flex-1">
           <SubjectPill name={d.subject.short} color={d.subject.color} />
-          <div className="min-w-0">
-            <div className="text-sm">{d.question}</div>
+          <div className="min-w-0 flex-1">
+            <div className="text-sm whitespace-pre-line">{d.question}</div>
+            {d.imageUrl && (
+              <button
+                type="button"
+                onClick={() => setImgOpen((o) => !o)}
+                className="mt-2 inline-flex items-center gap-1.5 text-[11px] text-accent hover:underline"
+              >
+                <ImageIcon className="w-3 h-3" />
+                {imgOpen ? "Hide image" : "View attached image"}
+              </button>
+            )}
+            {d.imageUrl && imgOpen && (
+              <div className="mt-2 relative w-full max-w-md aspect-[4/3] bg-bg-soft rounded-lg overflow-hidden border border-border-soft">
+                <Image
+                  src={d.imageUrl}
+                  alt="Doubt image"
+                  fill
+                  className="object-contain"
+                  sizes="(max-width: 768px) 100vw, 448px"
+                  unoptimized
+                />
+              </div>
+            )}
             <div className="text-xs text-ink-faint mt-1 flex items-center gap-2 flex-wrap">
               <span>Raised {fmtDate(d.raisedAt)}</span>
               {d.chapter && <span>· {d.chapter}</span>}
@@ -356,6 +478,7 @@ function DeleteButton({ id }: { id: string }) {
   const [pending, start] = useTransition();
   return (
     <button
+      type="button"
       onClick={() => {
         if (!confirm("Delete this doubt?")) return;
         start(() => {
@@ -364,6 +487,8 @@ function DeleteButton({ id }: { id: string }) {
       }}
       disabled={pending}
       className="btn-ghost text-bad hover:text-bad text-xs"
+      aria-label="Delete doubt"
+      title="Delete doubt"
     >
       <Trash2 className="w-3.5 h-3.5" />
     </button>

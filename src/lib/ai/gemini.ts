@@ -7,6 +7,7 @@ import "server-only";
 import {
   GoogleGenerativeAI,
   type GenerateContentResult,
+  type Part,
   type Schema,
 } from "@google/generative-ai";
 
@@ -155,6 +156,10 @@ export type GenerateTextOptions = {
   temperature?: number;
   /** Override the default model. */
   model?: string;
+  /** Optional inline images (Gemini Vision). Each image is base64-encoded
+   *  bytes + its MIME type. Keep total images small — flash models accept
+   *  many but each one counts toward the per-call token budget. */
+  images?: Array<{ bytes: Buffer; mime: string }>;
 };
 
 export async function generateText(
@@ -169,8 +174,17 @@ export async function generateText(
       temperature: opts.temperature ?? 0.3,
     },
   });
+  const parts: Part[] = [{ text: prompt }];
+  for (const img of opts.images ?? []) {
+    parts.push({
+      inlineData: {
+        data: img.bytes.toString("base64"),
+        mimeType: img.mime,
+      },
+    });
+  }
   const res: GenerateContentResult = await withRetry(
-    () => model.generateContent(prompt),
+    () => model.generateContent({ contents: [{ role: "user", parts }] }),
     modelName,
   );
   const text = res.response.text().trim();
@@ -204,8 +218,17 @@ export async function generateJson<T = unknown>(
       responseSchema: opts.schema,
     },
   });
+  const parts: Part[] = [{ text: prompt }];
+  for (const img of opts.images ?? []) {
+    parts.push({
+      inlineData: {
+        data: img.bytes.toString("base64"),
+        mimeType: img.mime,
+      },
+    });
+  }
   const res: GenerateContentResult = await withRetry(
-    () => model.generateContent(prompt),
+    () => model.generateContent({ contents: [{ role: "user", parts }] }),
     modelName,
   );
   const raw = res.response.text();

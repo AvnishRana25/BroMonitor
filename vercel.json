@@ -1,0 +1,15 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "crons": [
+    {
+      "path": "/api/cron/daily-tick",
+      "schedule": "30 13 * * *"
+    }
+  ],
+  "functions": {
+    "src/app/api/cron/daily-tick/route.ts": { "maxDuration": 60 },
+    "src/app/api/cron/weekly-report/route.ts": { "maxDuration": 60 },
+    "src/app/api/cron/monthly-report/route.ts": { "maxDuration": 60 },
+    "src/app/api/cron/test-briefs/route.ts": { "maxDuration": 60 }
+  }
+}

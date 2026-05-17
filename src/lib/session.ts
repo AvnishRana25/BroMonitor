@@ -52,6 +52,7 @@ export type Action =
   | "plan:edit"
   | "alert:view"
   | "alert:ack"
+  | "alert:snooze"
   | "alert:delete"
   | "comment:create"
   | "comment:delete"
@@ -83,6 +84,7 @@ const ABILITIES: Record<Action, Role[]> = {
   // (his own dashboard) but doesn't see the alert panel framed for father.
   "alert:view": ["guardian", "admin"],
   "alert:ack": ["guardian", "admin"],
+  "alert:snooze": ["guardian", "admin"],
   "alert:delete": ["admin"],
   "comment:create": ["guardian", "admin"],
   "comment:delete": ["admin"],

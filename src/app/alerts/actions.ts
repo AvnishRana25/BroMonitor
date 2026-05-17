@@ -31,6 +31,36 @@ export async function unackAlert(id: string) {
   revalidateAlertSurfaces();
 }
 
+export type SnoozePreset = "1h" | "tomorrow" | "3d" | "1w" | "clear";
+
+function presetToDate(preset: SnoozePreset): Date | null {
+  const now = new Date();
+  if (preset === "clear") return null;
+  if (preset === "1h") return new Date(now.getTime() + 60 * 60 * 1000);
+  if (preset === "3d") return new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
+  if (preset === "1w") return new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+  if (preset === "tomorrow") {
+    const t = new Date(now);
+    t.setDate(t.getDate() + 1);
+    t.setHours(8, 0, 0, 0);
+    return t;
+  }
+  return null;
+}
+
+export async function snoozeAlert(id: string, preset: SnoozePreset) {
+  const role = await requireRole(["guardian", "admin"]);
+  const until = presetToDate(preset);
+  await prisma.alert.update({
+    where: { id },
+    data: {
+      snoozedUntil: until,
+      snoozedBy: until ? role : null,
+    },
+  });
+  revalidateAlertSurfaces();
+}
+
 /** Permanently remove an alert and suppress its dedupeKey from reappearing. */
 export async function deleteAlert(id: string) {
   const role = await requireRole(["admin"]); // admin-only permanent delete
@@ -68,11 +98,27 @@ export async function clearResolved() {
         where: { dedupeKey: a.dedupeKey },
         create: { dedupeKey: a.dedupeKey, dismissedBy: "admin" },
         update: { dismissedAt: new Date(), dismissedBy: "admin" },
-      })
+      }),
     ),
     prisma.alert.deleteMany({
       where: { resolvedAt: { not: null } },
     }),
   ]);
+  revalidateAlertSurfaces();
+}
+
+/** Bulk-ack every active alert at or below the given severity (info < warn < red).
+ *  Useful when father is catching up after a few days away. */
+export async function ackAllAtOrBelow(maxSeverity: "info" | "warn") {
+  const role = await requireRole(["guardian", "admin"]);
+  const severities = maxSeverity === "info" ? ["info"] : ["info", "warn"];
+  await prisma.alert.updateMany({
+    where: {
+      resolvedAt: null,
+      acknowledgedAt: null,
+      severity: { in: severities },
+    },
+    data: { acknowledgedAt: new Date(), acknowledgedBy: role },
+  });
   revalidateAlertSurfaces();
 }

@@ -4,10 +4,14 @@
 //   const auth = checkCronSecret(req);
 //   if (!auth.ok) return auth.response;
 //
+// Accepted credentials (whichever is present, constant-time compared):
+//   - Header  x-cron-secret: <secret>                 (curl / GitHub Actions)
+//   - Header  Authorization: Bearer <secret>          (Vercel Cron native)
+//
 // HTTP codes:
 //   500 — CRON_SECRET env var not set (misconfiguration)
-//   401 — header missing entirely
-//   403 — header present but doesn't match
+//   401 — no credentials supplied at all
+//   403 — credentials supplied but don't match
 //
 // This split matters because external schedulers (Vercel cron, GitHub
 // Actions) retry on 5xx but treat 4xx as fatal — exactly the behaviour
@@ -28,27 +32,39 @@ export function checkCronSecret(req: Request): CronAuthResult {
         {
           ok: false,
           error:
-            "CRON_SECRET is not configured. Set it in .env and restart the server.",
+            "CRON_SECRET is not configured. Set it in the deployment environment and redeploy.",
         },
         { status: 500 },
       ),
     };
   }
-  const got = req.headers.get("x-cron-secret")?.trim();
-  if (!got) {
+
+  const xHeader = req.headers.get("x-cron-secret")?.trim();
+  const authHeader = req.headers.get("authorization")?.trim();
+  let bearer: string | null = null;
+  if (authHeader && /^Bearer\s+/i.test(authHeader)) {
+    bearer = authHeader.replace(/^Bearer\s+/i, "").trim();
+  }
+
+  const supplied = xHeader || bearer;
+  if (!supplied) {
     return {
       ok: false,
       response: NextResponse.json(
-        { ok: false, error: "Missing x-cron-secret header." },
+        {
+          ok: false,
+          error:
+            "Missing credentials. Send either `x-cron-secret: <secret>` or `Authorization: Bearer <secret>`.",
+        },
         { status: 401 },
       ),
     };
   }
-  if (!constantTimeEqual(got, expected)) {
+  if (!constantTimeEqual(supplied, expected)) {
     return {
       ok: false,
       response: NextResponse.json(
-        { ok: false, error: "Bad x-cron-secret value." },
+        { ok: false, error: "Bad cron credentials." },
         { status: 403 },
       ),
     };

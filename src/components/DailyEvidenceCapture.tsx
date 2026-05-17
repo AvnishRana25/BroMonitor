@@ -2,10 +2,7 @@
 
 import { useCallback, useRef, useState } from "react";
 import { Camera, CheckCircle2, ImagePlus, Loader2, Trash2, X } from "lucide-react";
-import {
-  compressImageFiles,
-  normalizeImageFile,
-} from "@/lib/imageCompress.client";
+import { normalizeImageFile } from "@/lib/imageCompress.client";
 import {
   postDailyPhotoUpload,
   postEnsureDailyLog,
@@ -55,6 +52,7 @@ export function DailyEvidenceCapture({
   const galleryInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState<UploadingItem[]>([]);
   const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -68,6 +66,7 @@ export function DailyEvidenceCapture({
 
   const resolveLogId = useCallback(async (): Promise<string | null> => {
     if (dailyLogId) return dailyLogId;
+    setStatus("Preparing log…");
     const res = await postEnsureDailyLog(logDate);
     if (!res.ok) {
       setError(res.error);
@@ -79,104 +78,107 @@ export function DailyEvidenceCapture({
 
   const uploadFiles = useCallback(
     async (rawFiles: File[]) => {
-      if (!canUpload || rawFiles.length === 0) return;
+      if (!canUpload) {
+        setError("You cannot upload photos here. Sign in as Brother on /unlock.");
+        return;
+      }
+      if (rawFiles.length === 0) {
+        setError("No photo selected. Tap Camera or Gallery again.");
+        return;
+      }
+
       setError(null);
       setSuccess(null);
       setBusy(true);
+      setStatus("Processing photo…");
 
-      const logId = await resolveLogId();
-      if (!logId) {
-        setBusy(false);
-        return;
-      }
-
-      const normalized = rawFiles.map((f) => normalizeImageFile(f));
-      const room = MAX_PHOTOS_PER_LOG - existingPhotos.length - uploading.length;
-      const toProcess = normalized.slice(0, Math.max(0, room));
-      if (toProcess.length === 0) {
-        setError(`Max ${MAX_PHOTOS_PER_LOG} photos per log.`);
-        setBusy(false);
-        return;
-      }
-
-      let compressed: File[];
       try {
-        compressed = await compressImageFiles(toProcess);
-      } catch {
-        compressed = toProcess;
-      }
+        const logId = await resolveLogId();
+        if (!logId) return;
 
-      const placeholders: UploadingItem[] = compressed.map((f) => ({
-        id: newUploadId(),
-        preview: URL.createObjectURL(f),
-      }));
-      setUploading((u) => [...u, ...placeholders]);
-
-      const added: ExistingPhoto[] = [];
-      const failed: string[] = [];
-
-      for (let i = 0; i < compressed.length; i++) {
-        const file = compressed[i];
-        const ph = placeholders[i];
-        try {
-          const res = await postDailyPhotoUpload(logId, file);
-          if (res.ok) {
-            added.push({ id: res.id, url: res.url });
-          } else {
-            failed.push(res.error);
-          }
-        } catch {
-          failed.push("Upload failed. Check your connection and try again.");
-        } finally {
-          URL.revokeObjectURL(ph.preview);
-          setUploading((u) => u.filter((x) => x.id !== ph.id));
+        const normalized = rawFiles.map((f) => normalizeImageFile(f));
+        const room = MAX_PHOTOS_PER_LOG - existingPhotos.length;
+        const toProcess = normalized.slice(0, Math.max(0, room));
+        if (toProcess.length === 0) {
+          setError(`Max ${MAX_PHOTOS_PER_LOG} photos per log.`);
+          return;
         }
-      }
 
-      if (added.length) {
-        onPhotosChange((prev) => [...prev, ...added]);
-        showSuccess(
-          added.length === 1
-            ? "Photo added successfully!"
-            : `${added.length} photos added successfully!`,
-        );
+        const placeholders: UploadingItem[] = toProcess.map((f) => ({
+          id: newUploadId(),
+          preview: URL.createObjectURL(f),
+        }));
+        setUploading((u) => [...u, ...placeholders]);
+
+        const added: ExistingPhoto[] = [];
+        const failed: string[] = [];
+
+        for (let i = 0; i < toProcess.length; i++) {
+          const file = toProcess[i];
+          const ph = placeholders[i];
+          setStatus(
+            toProcess.length > 1
+              ? `Uploading photo ${i + 1} of ${toProcess.length}…`
+              : "Uploading photo…",
+          );
+          try {
+            const res = await postDailyPhotoUpload(logId, file);
+            if (res.ok) {
+              added.push({ id: res.id, url: res.url });
+            } else {
+              failed.push(res.error);
+            }
+          } catch (err) {
+            failed.push(
+              err instanceof Error
+                ? err.message
+                : "Upload failed. Check your connection.",
+            );
+          } finally {
+            URL.revokeObjectURL(ph.preview);
+            setUploading((u) => u.filter((x) => x.id !== ph.id));
+          }
+        }
+
+        if (added.length) {
+          onPhotosChange((prev) => [...prev, ...added]);
+          showSuccess(
+            added.length === 1
+              ? "Photo added successfully!"
+              : `${added.length} photos added successfully!`,
+          );
+        }
+        if (failed.length && !added.length) {
+          setError(failed[0]);
+        } else if (failed.length) {
+          setError(`Some photos failed: ${failed[0]}`);
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Could not upload photo.");
+      } finally {
+        setBusy(false);
+        setStatus(null);
       }
-      if (failed.length) {
-        setError(failed[0]);
-      }
-      setBusy(false);
     },
-    [
-      canUpload,
-      resolveLogId,
-      existingPhotos.length,
-      uploading.length,
-      onPhotosChange,
-      showSuccess,
-    ],
+    [canUpload, resolveLogId, existingPhotos.length, onPhotosChange, showSuccess],
   );
 
-  async function onCameraChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const files = e.target.files;
-    e.target.value = "";
-    if (!files?.length) return;
-    try {
-      await uploadFiles([files[0]]);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not upload photo.");
-      setBusy(false);
+  async function handleFileInput(
+    files: FileList | null,
+    input: HTMLInputElement | null,
+  ) {
+    if (!files?.length) {
+      setError("No photo captured. Try again.");
+      return;
     }
-  }
-
-  async function onGalleryChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const files = e.target.files;
-    e.target.value = "";
-    if (!files?.length) return;
     try {
       await uploadFiles(Array.from(files));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not upload photo.");
       setBusy(false);
+      setStatus(null);
+    } finally {
+      if (input) input.value = "";
     }
   }
 
@@ -231,20 +233,20 @@ export function DailyEvidenceCapture({
           <input
             ref={cameraInputRef}
             type="file"
-            accept="image/jpeg,image/png,image/webp,image/heic,image/heif,image/*"
+            accept="image/*"
             capture="environment"
             className="sr-only"
-            aria-label="Take photo with camera"
-            onChange={onCameraChange}
+            aria-hidden
+            onChange={(e) => void handleFileInput(e.target.files, e.currentTarget)}
           />
           <input
             ref={galleryInputRef}
             type="file"
-            accept="image/jpeg,image/png,image/webp,image/heic,image/heif,image/*"
+            accept="image/*"
             multiple
             className="sr-only"
-            aria-label="Choose photos from gallery"
-            onChange={onGalleryChange}
+            aria-hidden
+            onChange={(e) => void handleFileInput(e.target.files, e.currentTarget)}
           />
           {atCap && (
             <p className="text-xs text-warn mb-2">
@@ -252,6 +254,13 @@ export function DailyEvidenceCapture({
             </p>
           )}
         </>
+      )}
+
+      {status && busy && (
+        <p className="text-xs text-accent mb-2 flex items-center gap-2">
+          <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+          {status}
+        </p>
       )}
 
       {success && (

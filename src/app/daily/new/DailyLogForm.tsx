@@ -11,8 +11,6 @@ import {
   DailyEvidenceCapture,
   type ExistingPhoto,
 } from "@/components/DailyEvidenceCapture";
-import { uploadDailyEvidence } from "@/app/photos/actions";
-import { deleteDailyPhoto } from "@/app/photos/actions";
 import { SmartLogPaste } from "@/components/SmartLogPaste";
 import type { ParsedLog } from "@/lib/ai/parseLog";
 
@@ -93,6 +91,7 @@ export function DailyLogForm({
   defaultDate,
   existing,
   existingPhotos = [],
+  initialDailyLogId = null,
   canUploadEvidence = true,
   canDeleteEvidence = false,
 }: {
@@ -100,11 +99,12 @@ export function DailyLogForm({
   defaultDate: string;
   existing: Existing | null;
   existingPhotos?: ExistingPhoto[];
+  initialDailyLogId?: string | null;
   canUploadEvidence?: boolean;
   canDeleteEvidence?: boolean;
 }) {
   const router = useRouter();
-  const [pendingPhotos, setPendingPhotos] = useState<File[]>([]);
+  const [dailyLogId, setDailyLogId] = useState<string | null>(initialDailyLogId);
   const [photos, setPhotos] = useState(existingPhotos);
   const [entries, setEntries] = useState<Entry[]>(
     existing?.entries.length
@@ -188,7 +188,7 @@ export function DailyLogForm({
     });
   }
 
-  const photoCount = photos.length + pendingPhotos.length;
+  const photoCount = photos.length;
 
   function update(i: number, patch: Partial<Entry>) {
     setEntries((arr) =>
@@ -236,7 +236,7 @@ export function DailyLogForm({
     }
     setSubmitting(true);
     const fd = new FormData(e.currentTarget);
-    fd.set("pendingPhotoCount", String(pendingPhotos.length));
+    fd.set("pendingPhotoCount", String(photoCount));
     entries.forEach((en, i) => {
       fd.set(`entry_${i}_subjectId`, en.subjectId);
       fd.set(`entry_${i}_chapterId`, en.chapterId ?? "");
@@ -255,29 +255,13 @@ export function DailyLogForm({
       setFormError(e instanceof Error ? e.message : "Could not save log.");
       return;
     }
-    if (pendingPhotos.length > 0 && result?.id && canUploadEvidence) {
-      const photoFd = new FormData();
-      for (const f of pendingPhotos) photoFd.append("photos", f);
-      const up = await uploadDailyEvidence(result.id, photoFd);
-      if (!up.ok) {
-        setSubmitting(false);
-        alert(up.error);
-        return;
-      }
-    }
     setSubmitting(false);
     router.push("/daily");
     router.refresh();
   }
 
-  async function handleDeletePhoto(id: string) {
-    await deleteDailyPhoto(id);
-    setPhotos((arr) => arr.filter((p) => p.id !== id));
-    router.refresh();
-  }
-
   return (
-    <form onSubmit={onSubmit} className="space-y-5">
+    <form onSubmit={onSubmit} className="space-y-5 pb-24 md:pb-0">
       <div className="card p-4 sm:p-5 border-accent/25 bg-accent/5">
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
           <div>
@@ -335,13 +319,15 @@ export function DailyLogForm({
         )}
       </div>
 
-      {canUploadEvidence && (
+      {(canUploadEvidence || photos.length > 0) && (
         <DailyEvidenceCapture
           existingPhotos={photos}
-          onPendingChange={setPendingPhotos}
-          autoOpenCamera
+          logDate={date}
+          dailyLogId={dailyLogId}
+          onLogId={setDailyLogId}
+          onPhotosChange={setPhotos}
+          canUpload={canUploadEvidence}
           canDeleteExisting={canDeleteEvidence}
-          onDeleteExisting={handleDeletePhoto}
         />
       )}
 
@@ -607,15 +593,19 @@ export function DailyLogForm({
         </div>
       </div>
 
-      <div className="flex items-center justify-end gap-2">
+      <div className="fixed md:relative bottom-0 inset-x-0 z-20 md:z-auto border-t md:border-0 border-border bg-bg-soft/95 backdrop-blur px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom)+3.5rem)] md:pb-0 md:px-0 md:bg-transparent md:backdrop-blur-none flex items-center justify-end gap-2 max-w-3xl mx-auto md:max-w-none">
         <button
           type="button"
           onClick={() => router.back()}
-          className="btn-ghost"
+          className="btn-ghost min-h-[44px]"
         >
           Cancel
         </button>
-        <button type="submit" disabled={submitting} className="btn-primary">
+        <button
+          type="submit"
+          disabled={submitting}
+          className="btn-primary min-h-[44px] flex-1 md:flex-none max-w-[220px]"
+        >
           {submitting ? "Saving…" : existing ? "Update log" : "Save log"}
         </button>
       </div>

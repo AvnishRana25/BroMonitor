@@ -3,9 +3,11 @@
 import { useRef, useState, useTransition } from "react";
 import Image from "next/image";
 import {
+  Camera,
   Check,
   CheckCircle2,
   ImageIcon,
+  ImagePlus,
   Loader2,
   Plus,
   RotateCcw,
@@ -13,6 +15,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
+import { compressImageFile } from "@/lib/imageCompress.client";
 import { SubjectPill } from "@/components/SubjectPill";
 import { fmtDate, fmtDateTime } from "@/lib/utils";
 import {
@@ -60,34 +63,42 @@ export function DoubtsView({
   const [filter, setFilter] = useState<"open" | "resolved" | "all">("open");
   const [pending, startTransition] = useTransition();
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
+  const galleryRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
 
   const filtered = doubts.filter((d) =>
     filter === "all" ? true : d.status === filter,
   );
 
-  function onPickImage(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0] ?? null;
-    if (!f) {
-      setImagePreview(null);
-      return;
-    }
+  async function applyImageFile(f: File | null) {
+    if (!f) return;
     if (f.size > 8 * 1024 * 1024) {
       setFormError(`Image too large (${(f.size / 1024 / 1024).toFixed(1)} MB). Max 8 MB.`);
-      e.target.value = "";
-      setImagePreview(null);
       return;
     }
     setFormError(null);
-    setImagePreview(URL.createObjectURL(f));
+    const compressed = await compressImageFile(f);
+    if (imagePreview) URL.revokeObjectURL(imagePreview);
+    setImageFile(compressed);
+    setImagePreview(URL.createObjectURL(compressed));
+  }
+
+  async function onPickImage(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0] ?? null;
+    e.target.value = "";
+    if (!f) return;
+    await applyImageFile(f);
   }
 
   function clearImage() {
-    if (fileRef.current) fileRef.current.value = "";
+    if (cameraRef.current) cameraRef.current.value = "";
+    if (galleryRef.current) galleryRef.current.value = "";
     if (imagePreview) URL.revokeObjectURL(imagePreview);
     setImagePreview(null);
+    setImageFile(null);
   }
 
   async function onCreate(e: React.FormEvent<HTMLFormElement>) {
@@ -95,11 +106,16 @@ export function DoubtsView({
     setFormError(null);
     const form = e.currentTarget;
     const fd = new FormData(form);
+    if (imageFile) fd.set("image", imageFile);
     startTransition(async () => {
       try {
-        await createDoubt(fd);
+        const { id } = await createDoubt(fd);
         form.reset();
         clearImage();
+        if (geminiConfigured) {
+          const ai = await getAiDoubtAnswer(id);
+          if (!ai.ok) setFormError(ai.error);
+        }
       } catch (err) {
         setFormError(err instanceof Error ? err.message : "Could not add doubt.");
       }
@@ -108,22 +124,21 @@ export function DoubtsView({
 
   return (
     <div className="space-y-5">
-      <form ref={formRef} onSubmit={onCreate} className="card p-5 space-y-3">
+      <form ref={formRef} onSubmit={onCreate} className="card p-4 sm:p-5 space-y-4">
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <div className="text-base font-semibold">Add a doubt</div>
           {geminiConfigured && (
             <span className="text-[11px] text-ink-faint flex items-center gap-1.5">
               <Sparkles className="w-3 h-3 text-accent" />
-              First-pass AI answer available after adding
+              AI answers automatically after you add (text or photo).
             </span>
           )}
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-          <select
+        <select
             name="subjectId"
             required
-            className="input"
+            className="input w-full min-h-[44px]"
             defaultValue=""
             aria-label="Subject"
           >
@@ -136,78 +151,95 @@ export function DoubtsView({
               </option>
             ))}
           </select>
-          <input name="chapter" className="input" placeholder="Chapter (optional)" />
-          <input name="topic" className="input" placeholder="Topic (optional)" />
-          <button
-            type="submit"
-            disabled={pending}
-            className="btn-primary justify-self-end sm:justify-self-stretch"
-          >
-            {pending ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Plus className="w-4 h-4" />
-            )}
-            Add
-          </button>
-          <textarea
-            name="question"
-            className="input sm:col-span-4 min-h-[72px] resize-y"
-            placeholder="Type the doubt… (or attach a photo of the problem below)"
-            maxLength={2000}
-          />
+
+        <div className="grid grid-cols-2 gap-2">
+          <input name="chapter" className="input min-h-[44px]" placeholder="Chapter (optional)" aria-label="Chapter" />
+          <input name="topic" className="input min-h-[44px]" placeholder="Topic (optional)" aria-label="Topic" />
         </div>
 
-        <div className="flex items-start gap-3 flex-wrap">
-          <label
-            className={`btn-ghost text-xs cursor-pointer ${
-              !cloudinaryConfigured ? "opacity-50 cursor-not-allowed" : ""
-            }`}
-            title={
-              cloudinaryConfigured
-                ? "Snap or pick a photo of the question"
-                : "Set CLOUDINARY_* in .env to enable image uploads"
-            }
-          >
-            <ImageIcon className="w-3.5 h-3.5" />
-            {imagePreview ? "Change photo" : "Attach photo"}
+        <textarea
+          name="question"
+          className="input w-full min-h-[88px] resize-y"
+          placeholder="Type the doubt… or snap the question below"
+          maxLength={2000}
+          aria-label="Doubt question"
+        />
+
+        {cloudinaryConfigured && (
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => cameraRef.current?.click()}
+              className="btn-primary min-h-[48px] flex items-center justify-center gap-2"
+            >
+              <Camera className="w-4 h-4" /> Camera
+            </button>
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => galleryRef.current?.click()}
+              className="btn-ghost min-h-[48px] flex items-center justify-center gap-2 border border-border"
+            >
+              <ImagePlus className="w-4 h-4" /> Gallery
+            </button>
             <input
-              ref={fileRef}
-              name="image"
+              ref={cameraRef}
               type="file"
               accept="image/*"
               capture="environment"
-              className="hidden"
+              className="sr-only"
+              aria-label="Take photo"
               onChange={onPickImage}
-              disabled={!cloudinaryConfigured}
             />
-          </label>
-          {imagePreview && (
-            <div className="relative inline-block">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={imagePreview}
-                alt="preview"
-                className="h-20 w-20 object-cover rounded-lg border border-border-soft"
-              />
-              <button
-                type="button"
-                onClick={clearImage}
-                className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-bg border border-border-soft flex items-center justify-center text-ink-faint hover:text-bad"
-                aria-label="Remove image"
-              >
-                <X className="w-3 h-3" />
-              </button>
-            </div>
-          )}
-          {!cloudinaryConfigured && (
-            <p className="text-[11px] text-ink-faint self-center">
-              Image uploads need Cloudinary credentials.
-            </p>
-          )}
-        </div>
+            <input
+              ref={galleryRef}
+              type="file"
+              accept="image/*"
+              className="sr-only"
+              aria-label="Choose from gallery"
+              onChange={onPickImage}
+            />
+          </div>
+        )}
 
-        {formError && (
+        {imagePreview && (
+          <div className="relative inline-block max-w-full">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={imagePreview}
+              alt="Problem preview"
+              className="max-h-40 rounded-lg border border-border-soft object-contain bg-bg-soft"
+            />
+            <button
+              type="button"
+              onClick={clearImage}
+              className="absolute top-1 right-1 p-1.5 rounded-md bg-black/60 text-white min-h-[36px] min-w-[36px] flex items-center justify-center"
+              aria-label="Remove image"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+
+        <button
+          type="submit"
+          disabled={pending}
+          className="btn-primary w-full min-h-[48px] flex items-center justify-center gap-2"
+        >
+          {pending ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin" />
+              {geminiConfigured ? "Adding & asking AI…" : "Adding…"}
+            </>
+          ) : (
+            <>
+              <Plus className="w-4 h-4" /> Add doubt
+            </>
+          )}
+        </button>
+
+                {formError && (
           <div className="text-xs text-bad bg-bad/10 border border-bad/30 rounded-lg px-2.5 py-1.5">
             {formError}
           </div>
@@ -308,7 +340,7 @@ function DoubtRow({
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-end">
           {geminiConfigured && (
             <button
               disabled={pending}
@@ -323,7 +355,7 @@ function DoubtRow({
                   setOpen(true);
                 });
               }}
-              className="btn-ghost text-xs"
+              className="btn-ghost text-xs min-h-[40px] px-2.5"
               title={d.aiAnswer ? "Re-ask AI" : "Get a first-pass AI answer"}
             >
               {pending ? (

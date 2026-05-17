@@ -76,7 +76,7 @@ const ABILITIES: Record<Action, Role[]> = {
   "syllabus:edit": ["admin"],
   "reflection:write": ["student", "admin"],
   "evidence:upload": ["student", "admin"],
-  "evidence:delete": ["admin"],
+  "evidence:delete": ["student", "admin"],
   "config:admin": ["admin"],
   // Father owns the weekly plan; admin can edit too.
   "plan:edit": ["guardian", "admin"],

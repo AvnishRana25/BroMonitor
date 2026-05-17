@@ -14,3 +14,6 @@ prisma/dev.db-journal
 uploads/
 .vercel
 .turbo
+DEPLOY_CHECKLIST.md
+DEPLOYMENT_GUIDE.md
+

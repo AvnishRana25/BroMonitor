@@ -22,14 +22,18 @@ const MAX_QUESTION_LEN = 2000;
 const MAX_CHAPTER_LEN = 200;
 const MAX_TOPIC_LEN = 200;
 
-export async function createDoubt(formData: FormData) {
+export async function createDoubt(
+  formData: FormData,
+): Promise<{ id: string }> {
   await requireRole(["student", "admin"]);
   const subjectId = ((formData.get("subjectId") as string) || "").trim();
   const question = ((formData.get("question") as string) || "").trim();
   const imageFile = formData.get("image");
   const hasImage = imageFile instanceof File && imageFile.size > 0;
-  if (!subjectId) return;
-  if (!question && !hasImage) return;
+  if (!subjectId) throw new Error("Pick a subject.");
+  if (!question && !hasImage) {
+    throw new Error("Type the doubt or attach a photo of the problem.");
+  }
   if (question.length > MAX_QUESTION_LEN) {
     throw new Error(
       `Doubt is too long (${question.length} chars). Keep it under ${MAX_QUESTION_LEN}.`,
@@ -59,7 +63,7 @@ export async function createDoubt(formData: FormData) {
     imageMime = up.mime;
   }
 
-  await prisma.doubt.create({
+  const doubt = await prisma.doubt.create({
     data: {
       subjectId,
       question: question || "(image-only doubt)",
@@ -72,6 +76,7 @@ export async function createDoubt(formData: FormData) {
   });
   revalidatePath("/doubts");
   revalidatePath("/");
+  return { id: doubt.id };
 }
 
 export async function resolveDoubt(id: string, by: string) {

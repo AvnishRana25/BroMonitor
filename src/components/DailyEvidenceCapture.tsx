@@ -1,140 +1,150 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Camera, ImagePlus, Trash2, X } from "lucide-react";
+import { useCallback, useRef, useState } from "react";
+import { Camera, ImagePlus, Loader2, Trash2 } from "lucide-react";
+import { compressImageFiles } from "@/lib/imageCompress.client";
+import { uploadDailyPhoto, deleteDailyPhoto } from "@/app/photos/actions";
+import { ensureDailyLogForDate } from "@/app/daily/actions";
+import { MAX_PHOTOS_PER_LOG } from "@/lib/photos.client";
 
 export type ExistingPhoto = {
   id: string;
   url: string;
 };
 
-type PendingPhoto = {
-  id: string;
-  preview: string;
-  file: File;
-};
-
 type Props = {
   existingPhotos: ExistingPhoto[];
-  onPendingChange: (files: File[]) => void;
-  autoOpenCamera?: boolean;
+  logDate: string;
+  dailyLogId: string | null;
+  onLogId: (id: string) => void;
+  onPhotosChange: (
+    photos: ExistingPhoto[] | ((prev: ExistingPhoto[]) => ExistingPhoto[]),
+  ) => void;
+  canUpload?: boolean;
   canDeleteExisting?: boolean;
-  onDeleteExisting?: (id: string) => void;
+};
+
+type UploadingItem = {
+  id: string;
+  preview: string;
 };
 
 export function DailyEvidenceCapture({
   existingPhotos,
-  onPendingChange,
-  autoOpenCamera = true,
+  logDate,
+  dailyLogId,
+  onLogId,
+  onPhotosChange,
+  canUpload = true,
   canDeleteExisting = false,
-  onDeleteExisting,
 }: Props) {
-  const [pending, setPending] = useState<PendingPhoto[]>([]);
-  const [cameraOpen, setCameraOpen] = useState(false);
-  const [cameraError, setCameraError] = useState<string | null>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const autoOpenedRef = useRef(false);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState<UploadingItem[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const syncPending = useCallback(
-    (next: PendingPhoto[]) => {
-      setPending(next);
-      onPendingChange(next.map((p) => p.file));
+  const totalCount = existingPhotos.length + uploading.length;
+  const atCap = totalCount >= MAX_PHOTOS_PER_LOG;
+
+  const resolveLogId = useCallback(async (): Promise<string | null> => {
+    if (dailyLogId) return dailyLogId;
+    try {
+      const { id } = await ensureDailyLogForDate(logDate);
+      onLogId(id);
+      return id;
+    } catch {
+      return null;
+    }
+  }, [dailyLogId, logDate, onLogId]);
+
+  const uploadFiles = useCallback(
+    async (rawFiles: File[]) => {
+      if (!canUpload || rawFiles.length === 0) return;
+      setError(null);
+      setBusy(true);
+
+      const logId = await resolveLogId();
+      if (!logId) {
+        setError("Could not prepare log for upload. Try again.");
+        setBusy(false);
+        return;
+      }
+
+      const room = MAX_PHOTOS_PER_LOG - existingPhotos.length - uploading.length;
+      const toProcess = rawFiles.slice(0, Math.max(0, room));
+      if (toProcess.length === 0) {
+        setError(`Max ${MAX_PHOTOS_PER_LOG} photos per log.`);
+        setBusy(false);
+        return;
+      }
+
+      let compressed: File[];
+      try {
+        compressed = await compressImageFiles(toProcess);
+      } catch {
+        compressed = toProcess;
+      }
+
+      const placeholders: UploadingItem[] = compressed.map((f) => ({
+        id: crypto.randomUUID(),
+        preview: URL.createObjectURL(f),
+      }));
+      setUploading((u) => [...u, ...placeholders]);
+
+      const added: ExistingPhoto[] = [];
+      const failed: string[] = [];
+
+      await Promise.all(
+        compressed.map(async (file, i) => {
+          const ph = placeholders[i];
+          const fd = new FormData();
+          fd.set("photo", file);
+          try {
+            const res = await uploadDailyPhoto(logId, fd);
+            if (res.ok) {
+              added.push({ id: res.id, url: res.url });
+            } else {
+              failed.push(res.error);
+            }
+          } catch {
+            failed.push("Upload failed.");
+          } finally {
+            URL.revokeObjectURL(ph.preview);
+            setUploading((u) => u.filter((x) => x.id !== ph.id));
+          }
+        }),
+      );
+
+      if (added.length) {
+        onPhotosChange((prev) => [...prev, ...added]);
+      }
+      if (failed.length) {
+        setError(failed[0]);
+      }
+      setBusy(false);
     },
-    [onPendingChange]
+    [canUpload, resolveLogId, existingPhotos, uploading.length, onPhotosChange],
   );
 
-  const stopCamera = useCallback(() => {
-    streamRef.current?.getTracks().forEach((t) => t.stop());
-    streamRef.current = null;
-    setCameraOpen(false);
-  }, []);
-
-  const startCamera = useCallback(async () => {
-    setCameraError(null);
-    if (!navigator.mediaDevices?.getUserMedia) {
-      fileInputRef.current?.click();
-      return;
-    }
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: { ideal: "environment" },
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
-        },
-        audio: false,
-      });
-      streamRef.current = stream;
-      setCameraOpen(true);
-    } catch {
-      setCameraError("Camera blocked — use the gallery button below.");
-      fileInputRef.current?.click();
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!cameraOpen || !videoRef.current || !streamRef.current) return;
-    videoRef.current.srcObject = streamRef.current;
-    void videoRef.current.play();
-  }, [cameraOpen]);
-
-  useEffect(() => {
-    if (!autoOpenCamera || autoOpenedRef.current) return;
-    autoOpenedRef.current = true;
-    const t = window.setTimeout(() => {
-      void startCamera();
-    }, 400);
-    return () => window.clearTimeout(t);
-  }, [autoOpenCamera, startCamera]);
-
-  useEffect(() => () => stopCamera(), [stopCamera]);
-
-  function captureFromVideo() {
-    const video = videoRef.current;
-    if (!video) return;
-    const canvas = document.createElement("canvas");
-    canvas.width = video.videoWidth || 1280;
-    canvas.height = video.videoHeight || 720;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    ctx.drawImage(video, 0, 0);
-    canvas.toBlob(
-      (blob) => {
-        if (!blob) return;
-        const file = new File([blob], `evidence-${Date.now()}.jpg`, {
-          type: "image/jpeg",
-        });
-        const preview = URL.createObjectURL(blob);
-        syncPending([
-          ...pending,
-          { id: crypto.randomUUID(), preview, file },
-        ]);
-      },
-      "image/jpeg",
-      0.88
-    );
-  }
-
-  function onFilesSelected(files: FileList | null) {
+  async function onCameraChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = e.target.files;
+    e.target.value = "";
     if (!files?.length) return;
-    const added: PendingPhoto[] = [];
-    for (const file of Array.from(files)) {
-      if (!file.type.startsWith("image/")) continue;
-      added.push({
-        id: crypto.randomUUID(),
-        preview: URL.createObjectURL(file),
-        file,
-      });
-    }
-    if (added.length) syncPending([...pending, ...added]);
+    await uploadFiles([files[0]]);
   }
 
-  function removePending(id: string) {
-    const item = pending.find((p) => p.id === id);
-    if (item) URL.revokeObjectURL(item.preview);
-    syncPending(pending.filter((p) => p.id !== id));
+  async function onGalleryChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = e.target.files;
+    e.target.value = "";
+    if (!files?.length) return;
+    await uploadFiles(Array.from(files));
+  }
+
+  async function handleDelete(id: string) {
+    setError(null);
+    await deleteDailyPhoto(id);
+    onPhotosChange((prev) => prev.filter((p) => p.id !== id));
   }
 
   return (
@@ -142,72 +152,70 @@ export function DailyEvidenceCapture({
       <div className="mb-3">
         <h3 className="text-base font-semibold">Study evidence</h3>
         <p className="text-xs text-ink-faint mt-0.5">
-          Snap notebook pages or solved problems so your father can see what you
-          studied today.
+          {canUpload
+            ? "Tap Camera or Gallery — photos save immediately."
+            : "Notebook photos attached to this day's log."}
         </p>
       </div>
 
-      {cameraOpen && (
-        <div className="relative mb-3 rounded-xl overflow-hidden bg-black aspect-[4/3] max-h-[min(70vh,420px)]">
-          <video
-            ref={videoRef}
-            playsInline
-            muted
-            className="w-full h-full object-cover"
-          />
-          <div className="absolute inset-x-0 bottom-0 p-3 flex items-center justify-between gap-2 bg-gradient-to-t from-black/80 to-transparent">
+      {canUpload && (
+        <>
+          <div className="grid grid-cols-2 gap-2 mb-3">
             <button
               type="button"
-              onClick={stopCamera}
-              className="btn-ghost py-2.5 px-3 min-h-[44px] bg-black/40 border-white/20"
+              disabled={busy || atCap}
+              onClick={() => cameraInputRef.current?.click()}
+              className="btn-primary min-h-[48px] flex items-center justify-center gap-2"
             >
-              <X className="w-4 h-4" /> Close
+              {busy ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Camera className="w-4 h-4" />
+              )}
+              Camera
             </button>
             <button
               type="button"
-              onClick={captureFromVideo}
-              className="btn-primary py-2.5 px-5 min-h-[44px] flex-1 max-w-[200px]"
+              disabled={busy || atCap}
+              onClick={() => galleryInputRef.current?.click()}
+              className="btn-ghost min-h-[48px] flex items-center justify-center gap-2 border border-border"
             >
-              <Camera className="w-4 h-4" /> Capture
+              <ImagePlus className="w-4 h-4" /> Gallery
             </button>
           </div>
-        </div>
+          <input
+            ref={cameraInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="sr-only"
+            aria-label="Take photo with camera"
+            onChange={onCameraChange}
+          />
+          <input
+            ref={galleryInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            className="sr-only"
+            aria-label="Choose photos from gallery"
+            onChange={onGalleryChange}
+          />
+          {atCap && (
+            <p className="text-xs text-warn mb-2">
+              {MAX_PHOTOS_PER_LOG} photos max — delete one to add more.
+            </p>
+          )}
+        </>
       )}
 
-      {cameraError && (
-        <p className="text-xs text-warn mb-2">{cameraError}</p>
+      {error && (
+        <p className="text-xs text-bad bg-bad/10 border border-bad/30 rounded-lg px-2.5 py-1.5 mb-2">
+          {error}
+        </p>
       )}
 
-      <div className="flex flex-wrap gap-2 mb-3">
-        <button
-          type="button"
-          onClick={() => void startCamera()}
-          className="btn-primary min-h-[44px] flex-1 sm:flex-none"
-        >
-          <Camera className="w-4 h-4" /> Open camera
-        </button>
-        <button
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
-          className="btn-ghost min-h-[44px] flex-1 sm:flex-none"
-        >
-          <ImagePlus className="w-4 h-4" /> From gallery
-        </button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          capture="environment"
-          multiple
-          className="sr-only"
-          onChange={(e) => {
-            onFilesSelected(e.target.files);
-            e.target.value = "";
-          }}
-        />
-      </div>
-
-      {(existingPhotos.length > 0 || pending.length > 0) && (
+      {(existingPhotos.length > 0 || uploading.length > 0) && (
         <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
           {existingPhotos.map((p) => (
             <div
@@ -220,10 +228,10 @@ export function DailyEvidenceCapture({
                 alt="Study evidence"
                 className="w-full h-full object-cover"
               />
-              {canDeleteExisting && onDeleteExisting && (
+              {canDeleteExisting && (
                 <button
                   type="button"
-                  onClick={() => onDeleteExisting(p.id)}
+                  onClick={() => void handleDelete(p.id)}
                   className="absolute top-1 right-1 p-1.5 rounded-md bg-black/60 text-white min-h-[36px] min-w-[36px] flex items-center justify-center"
                   aria-label="Delete photo"
                 >
@@ -232,7 +240,7 @@ export function DailyEvidenceCapture({
               )}
             </div>
           ))}
-          {pending.map((p) => (
+          {uploading.map((p) => (
             <div
               key={p.id}
               className="relative aspect-square rounded-lg overflow-hidden border border-accent/40 bg-bg-soft"
@@ -240,28 +248,25 @@ export function DailyEvidenceCapture({
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={p.preview}
-                alt="Pending evidence"
-                className="w-full h-full object-cover"
+                alt="Uploading"
+                className="w-full h-full object-cover opacity-70"
               />
-              <span className="absolute top-1 left-1 text-[9px] uppercase tracking-wide bg-accent/90 text-white px-1.5 py-0.5 rounded">
-                New
-              </span>
-              <button
-                type="button"
-                onClick={() => removePending(p.id)}
-                className="absolute top-1 right-1 p-1.5 rounded-md bg-black/60 text-white min-h-[36px] min-w-[36px] flex items-center justify-center"
-                aria-label="Remove photo"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
+              <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+                <Loader2 className="w-6 h-6 text-white animate-spin" />
+              </div>
             </div>
           ))}
         </div>
       )}
 
-      {existingPhotos.length === 0 && pending.length === 0 && !cameraOpen && (
-        <p className="text-xs text-ink-faint text-center py-4">
-          Camera opens automatically. Add at least one photo of today&apos;s work.
+      {canUpload && existingPhotos.length === 0 && uploading.length === 0 && !busy && (
+        <p className="text-xs text-ink-faint text-center py-3">
+          Add at least one photo of today&apos;s work.
+        </p>
+      )}
+      {!canUpload && existingPhotos.length === 0 && (
+        <p className="text-xs text-ink-faint text-center py-3">
+          No evidence photos for this day.
         </p>
       )}
     </section>

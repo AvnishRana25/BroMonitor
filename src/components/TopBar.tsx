@@ -1,22 +1,8 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
-import Link from "next/link";
+import { useTransition } from "react";
+import { Lock } from "lucide-react";
 import { usePathname } from "next/navigation";
-import {
-  BookOpenCheck,
-  CalendarDays,
-  ClipboardList,
-  GraduationCap,
-  HelpCircle,
-  LayoutDashboard,
-  Lock,
-  Menu,
-  Siren,
-  Sparkles,
-  Target,
-  X,
-} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ROLE_META, Role } from "@/lib/auth";
 import { lock } from "@/app/unlock/actions";
@@ -38,24 +24,6 @@ const titles: Record<string, { title: string; sub: string }> = {
   "/reports": { title: "AI reports", sub: "Weekly, monthly and pre-test briefs" },
 };
 
-type NavItem = {
-  href: string;
-  label: string;
-  icon: typeof LayoutDashboard;
-  roles?: Role[];
-};
-
-const mobileNav: NavItem[] = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/daily", label: "Daily log", icon: CalendarDays },
-  { href: "/subjects", label: "Subjects", icon: BookOpenCheck },
-  { href: "/tests", label: "Tests", icon: ClipboardList },
-  { href: "/doubts", label: "Doubts", icon: HelpCircle },
-  { href: "/alerts", label: "Alerts", icon: Siren, roles: ["guardian", "admin"] },
-  { href: "/plan", label: "Weekly plan", icon: Target, roles: ["guardian", "admin"] },
-  { href: "/reports", label: "AI reports", icon: Sparkles, roles: ["guardian", "admin"] },
-];
-
 export function TopBar({
   studentName,
   role,
@@ -64,7 +32,6 @@ export function TopBar({
   role: Role;
 }) {
   const pathname = usePathname();
-  const [drawerOpen, setDrawerOpen] = useState(false);
   const [pending, start] = useTransition();
   const meta = ROLE_META[role];
 
@@ -73,40 +40,18 @@ export function TopBar({
     .sort((a, b) => b.length - a.length)[0];
   const pageMeta = titles[key] ?? titles["/"];
 
-  useEffect(() => {
-    setDrawerOpen(false);
-  }, [pathname]);
-
-  useEffect(() => {
-    if (typeof document === "undefined") return;
-    document.body.style.overflow = drawerOpen ? "hidden" : "";
-    return () => {
-      document.body.style.overflow = "";
-    };
-  }, [drawerOpen]);
-
-  const items = mobileNav.filter((n) => !n.roles || n.roles.includes(role));
-
   return (
     <header className="border-b border-border bg-bg-soft/60 backdrop-blur sticky top-0 z-20">
-      <div className="px-4 sm:px-6 lg:px-10 py-4 flex items-center gap-3 max-w-[1400px] w-full mx-auto">
-        <button
-          type="button"
-          onClick={() => setDrawerOpen(true)}
-          aria-label="Open navigation"
-          className="md:hidden p-2 -ml-2 rounded-lg text-ink-dim hover:text-ink hover:bg-bg-hover transition"
-        >
-          <Menu className="w-5 h-5" />
-        </button>
+      <div className="px-4 sm:px-6 lg:px-10 py-3 sm:py-4 flex items-center gap-3 max-w-[1400px] w-full mx-auto">
         <div className="flex-1 min-w-0">
-          <div className="text-lg font-semibold tracking-tight truncate">
+          <h1 className="text-base sm:text-lg font-semibold tracking-tight truncate">
             {pageMeta.title}
-          </div>
-          <div className="text-xs text-ink-faint mt-0.5 truncate">
+          </h1>
+          <p className="text-[11px] sm:text-xs text-ink-faint mt-0.5 truncate max-md:hidden">
             {pageMeta.sub}
-          </div>
+          </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
           <div className="text-right hidden sm:block">
             <div className="text-[10px] text-ink-faint uppercase tracking-wide">
               Signed in as
@@ -116,9 +61,7 @@ export function TopBar({
             </div>
           </div>
           <div
-            className={cn(
-              "w-9 h-9 rounded-full bg-accent/20 text-accent flex items-center justify-center text-sm font-semibold shrink-0"
-            )}
+            className="w-9 h-9 rounded-full bg-accent/20 text-accent flex items-center justify-center text-sm font-semibold"
             title={`Tracking ${studentName}`}
           >
             {studentName?.[0]?.toUpperCase() ?? "B"}
@@ -132,86 +75,13 @@ export function TopBar({
               })
             }
             title="Lock"
-            className="p-2 rounded-lg text-ink-dim hover:text-ink hover:bg-bg-hover transition disabled:opacity-50"
+            aria-label="Lock app"
+            className="p-2.5 rounded-lg text-ink-dim hover:text-ink hover:bg-bg-hover transition disabled:opacity-50 min-h-[44px] min-w-[44px] flex items-center justify-center"
           >
             <Lock className="w-4 h-4" />
           </button>
         </div>
       </div>
-
-      {/* Mobile drawer */}
-      {drawerOpen && (
-        <div className="md:hidden fixed inset-0 z-30">
-          <div
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-            onClick={() => setDrawerOpen(false)}
-          />
-          <aside className="absolute left-0 top-0 bottom-0 w-72 max-w-[85%] bg-bg-soft border-r border-border shadow-2xl flex flex-col">
-            <div className="flex items-center justify-between px-5 py-5 border-b border-border">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-accent/20 flex items-center justify-center">
-                  <GraduationCap className="w-5 h-5 text-accent" />
-                </div>
-                <div>
-                  <div className="font-semibold leading-none">BroMonitor</div>
-                  <div className="text-[11px] text-ink-faint mt-1">
-                    Class 11 daily tracker
-                  </div>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setDrawerOpen(false)}
-                aria-label="Close navigation"
-                className="p-2 -mr-2 rounded-lg text-ink-dim hover:text-ink hover:bg-bg-hover transition"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <nav className="flex-1 px-3 py-4 space-y-1">
-              {items.map((n) => {
-                const active =
-                  pathname === n.href ||
-                  (n.href !== "/" && pathname.startsWith(n.href));
-                const Icon = n.icon;
-                return (
-                  <Link
-                    key={n.href}
-                    href={n.href}
-                    className={cn(
-                      "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition",
-                      active
-                        ? "bg-accent/15 text-accent"
-                        : "text-ink-dim hover:text-ink hover:bg-bg-hover"
-                    )}
-                  >
-                    <Icon className="w-4 h-4" />
-                    {n.label}
-                  </Link>
-                );
-              })}
-            </nav>
-            <div className="px-5 py-4 border-t border-border text-[11px] text-ink-faint flex items-center justify-between">
-              <span>
-                Signed in as{" "}
-                <span className={cn("font-medium", meta.tone)}>{meta.label}</span>
-              </span>
-              <button
-                type="button"
-                disabled={pending}
-                onClick={() =>
-                  start(() => {
-                    void lock();
-                  })
-                }
-                className="text-ink-dim hover:text-ink"
-              >
-                Lock
-              </button>
-            </div>
-          </aside>
-        </div>
-      )}
     </header>
   );
 }

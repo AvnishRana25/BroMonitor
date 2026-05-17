@@ -122,7 +122,7 @@ const SYSTEM = `You convert a Class 11 JEE student's one-line daily summary into
 Rules:
 - Output JSON matching the provided schema. No prose, no markdown.
 - Hours: if not mentioned, use 0. Never invent hours.
-- Subject names MUST exactly match one entry from the SUBJECTS list given by the user. If the student says "phy" → "Physics", "chem" → "Chemistry", "math" / "maths" → "Mathematics". If no match, do not include the entry — put the original phrase in "unmatched" instead.
+- Subject names MUST exactly match one entry from the SUBJECTS list given by the user. If the student says "phy" → "Physics", "chem" → "Chemistry", "math" / "maths" → "Maths". If no match, do not include the entry — put the original phrase in "unmatched" instead.
 - Chapter: copy the closest CHAPTERS entry under the chosen subject (case-insensitive substring match is fine). If no clear match, leave chapter null and put the topic into "topic".
 - If the student says something like "homework pending" or "hw not done" → set homework_done=false on the relevant entry, optionally a separate row with the same chapter.
 - Source defaults to "school" if the line says school, "coaching" if it says coaching/class, "self" otherwise.

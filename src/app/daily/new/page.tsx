@@ -87,6 +87,7 @@ export default async function NewDailyLogPage({
             url: photoUrl(p.id),
           })) ?? []
         }
+        initialDailyLogId={existing?.id ?? null}
         canUploadEvidence={canUpload}
         canDeleteEvidence={canDeletePhotos}
       />

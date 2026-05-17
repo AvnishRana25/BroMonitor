@@ -53,7 +53,7 @@ export function MobileBottomNav({ role }: { role: Role }) {
       className="md:hidden fixed bottom-0 inset-x-0 z-30 border-t border-border bg-bg-soft/95 backdrop-blur pb-[env(safe-area-inset-bottom)]"
       aria-label="Main navigation"
     >
-      <div className="flex items-stretch justify-around max-w-lg mx-auto">
+      <div className="flex items-stretch justify-around max-w-lg mx-auto px-1">
         {items.map((t) => {
           const active =
             t.href === "/"

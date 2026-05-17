@@ -1,9 +1,13 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import { Camera, ImagePlus, Loader2, Trash2 } from "lucide-react";
-import { compressImageFiles } from "@/lib/imageCompress.client";
-import { uploadDailyPhoto, deleteDailyPhoto } from "@/app/photos/actions";
+import { Camera, CheckCircle2, ImagePlus, Loader2, Trash2, X } from "lucide-react";
+import {
+  compressImageFiles,
+  normalizeImageFile,
+} from "@/lib/imageCompress.client";
+import { postDailyPhotoUpload } from "@/lib/uploadDailyPhoto.client";
+import { deleteDailyPhoto } from "@/app/photos/actions";
 import { ensureDailyLogForDate } from "@/app/daily/actions";
 import { MAX_PHOTOS_PER_LOG } from "@/lib/photos.client";
 
@@ -43,9 +47,15 @@ export function DailyEvidenceCapture({
   const [uploading, setUploading] = useState<UploadingItem[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
   const totalCount = existingPhotos.length + uploading.length;
   const atCap = totalCount >= MAX_PHOTOS_PER_LOG;
+
+  const showSuccess = useCallback((message: string) => {
+    setSuccess(message);
+    window.setTimeout(() => setSuccess(null), 4500);
+  }, []);
 
   const resolveLogId = useCallback(async (): Promise<string | null> => {
     if (dailyLogId) return dailyLogId;
@@ -53,7 +63,10 @@ export function DailyEvidenceCapture({
       const { id } = await ensureDailyLogForDate(logDate);
       onLogId(id);
       return id;
-    } catch {
+    } catch (e) {
+      setError(
+        e instanceof Error ? e.message : "Could not prepare log for upload.",
+      );
       return null;
     }
   }, [dailyLogId, logDate, onLogId]);
@@ -62,17 +75,18 @@ export function DailyEvidenceCapture({
     async (rawFiles: File[]) => {
       if (!canUpload || rawFiles.length === 0) return;
       setError(null);
+      setSuccess(null);
       setBusy(true);
 
       const logId = await resolveLogId();
       if (!logId) {
-        setError("Could not prepare log for upload. Try again.");
         setBusy(false);
         return;
       }
 
+      const normalized = rawFiles.map((f) => normalizeImageFile(f));
       const room = MAX_PHOTOS_PER_LOG - existingPhotos.length - uploading.length;
-      const toProcess = rawFiles.slice(0, Math.max(0, room));
+      const toProcess = normalized.slice(0, Math.max(0, room));
       if (toProcess.length === 0) {
         setError(`Max ${MAX_PHOTOS_PER_LOG} photos per log.`);
         setBusy(false);
@@ -95,36 +109,45 @@ export function DailyEvidenceCapture({
       const added: ExistingPhoto[] = [];
       const failed: string[] = [];
 
-      await Promise.all(
-        compressed.map(async (file, i) => {
-          const ph = placeholders[i];
-          const fd = new FormData();
-          fd.set("photo", file);
-          try {
-            const res = await uploadDailyPhoto(logId, fd);
-            if (res.ok) {
-              added.push({ id: res.id, url: res.url });
-            } else {
-              failed.push(res.error);
-            }
-          } catch {
-            failed.push("Upload failed.");
-          } finally {
-            URL.revokeObjectURL(ph.preview);
-            setUploading((u) => u.filter((x) => x.id !== ph.id));
+      for (let i = 0; i < compressed.length; i++) {
+        const file = compressed[i];
+        const ph = placeholders[i];
+        try {
+          const res = await postDailyPhotoUpload(logId, file);
+          if (res.ok) {
+            added.push({ id: res.id, url: res.url });
+          } else {
+            failed.push(res.error);
           }
-        }),
-      );
+        } catch {
+          failed.push("Upload failed. Check your connection and try again.");
+        } finally {
+          URL.revokeObjectURL(ph.preview);
+          setUploading((u) => u.filter((x) => x.id !== ph.id));
+        }
+      }
 
       if (added.length) {
         onPhotosChange((prev) => [...prev, ...added]);
+        showSuccess(
+          added.length === 1
+            ? "Photo added successfully!"
+            : `${added.length} photos added successfully!`,
+        );
       }
       if (failed.length) {
         setError(failed[0]);
       }
       setBusy(false);
     },
-    [canUpload, resolveLogId, existingPhotos, uploading.length, onPhotosChange],
+    [
+      canUpload,
+      resolveLogId,
+      existingPhotos.length,
+      uploading.length,
+      onPhotosChange,
+      showSuccess,
+    ],
   );
 
   async function onCameraChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -143,8 +166,14 @@ export function DailyEvidenceCapture({
 
   async function handleDelete(id: string) {
     setError(null);
-    await deleteDailyPhoto(id);
-    onPhotosChange((prev) => prev.filter((p) => p.id !== id));
+    setSuccess(null);
+    try {
+      await deleteDailyPhoto(id);
+      onPhotosChange((prev) => prev.filter((p) => p.id !== id));
+      showSuccess("Photo removed.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not delete photo.");
+    }
   }
 
   return (
@@ -207,6 +236,24 @@ export function DailyEvidenceCapture({
             </p>
           )}
         </>
+      )}
+
+      {success && (
+        <div
+          role="status"
+          className="mb-3 flex items-start gap-2 text-xs text-good bg-good/10 border border-good/30 rounded-lg px-3 py-2.5"
+        >
+          <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
+          <span className="flex-1 font-medium">{success}</span>
+          <button
+            type="button"
+            onClick={() => setSuccess(null)}
+            className="text-good/80 hover:text-good p-0.5"
+            aria-label="Dismiss"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
       )}
 
       {error && (

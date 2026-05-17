@@ -43,7 +43,14 @@ export async function uploadDailyPhoto(
   | { ok: true; id: string; url: string }
   | { ok: false; error: string }
 > {
-  await requireRole(["student", "admin"]);
+  try {
+    await requireRole(["student", "admin"]);
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : "Not allowed to upload photos.",
+    };
+  }
 
   const log = await prisma.dailyLog.findUnique({ where: { id: dailyLogId } });
   if (!log) return { ok: false, error: "Daily log not found." };
@@ -110,7 +117,11 @@ export async function uploadDailyEvidence(
 }
 
 export async function deleteDailyPhoto(id: string) {
-  await requireRole(["student", "admin"]);
+  try {
+    await requireRole(["student", "admin"]);
+  } catch (e) {
+    throw e instanceof Error ? e : new Error("Forbidden");
+  }
   const photo = await prisma.photo.findUnique({ where: { id } });
   if (!photo) return;
   await deletePhoto({ publicId: photo.publicId, filename: photo.filename });

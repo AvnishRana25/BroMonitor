@@ -113,9 +113,10 @@ export async function reopenDoubt(id: string) {
   revalidatePath("/");
 }
 
+/** @deprecated Prefer POST /api/doubts/:id/ai from the client. */
 export async function getAiDoubtAnswer(id: string) {
-  await requireRole(["student", "guardian", "admin"]);
   try {
+    await requireRole(["student", "guardian", "admin"]);
     const result = await answerDoubtWithAi(id);
     revalidatePath("/doubts");
     return { ok: true as const, ...result };

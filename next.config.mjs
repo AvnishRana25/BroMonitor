@@ -16,6 +16,10 @@ const nextConfig = {
   // optional adapters we don't use.
   experimental: {
     serverComponentsExternalPackages: ["cloudinary"],
+    // Camera/gallery uploads exceed the default 1 MB Server Action limit.
+    serverActions: {
+      bodySizeLimit: "10mb",
+    },
   },
 };
 

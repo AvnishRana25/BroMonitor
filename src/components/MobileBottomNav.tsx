@@ -8,6 +8,7 @@ import {
   ClipboardList,
   HelpCircle,
   LayoutDashboard,
+  Sparkles,
   Siren,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -20,11 +21,7 @@ type Tab = {
   roles?: Role[];
 };
 
-// Up to 5 tabs comfortably fit on a phone. The set differs by role:
-//   - Brother (student): Home / Log / Doubts / Subjects / Tests
-//   - Father (guardian): Home / Daily / Doubts / Tests / Alerts
-//   - Admin: same as guardian, but "Doubts" is also there.
-// The Log/Doubts entry points are the two things either person does most.
+// Up to 5 tabs fit on a phone. Sets mirror the desktop sidebar per role.
 function tabsForRole(role: Role): Tab[] {
   if (role === "student") {
     return [
@@ -35,11 +32,21 @@ function tabsForRole(role: Role): Tab[] {
       { href: "/tests", label: "Tests", icon: ClipboardList },
     ];
   }
+  if (role === "guardian") {
+    return [
+      { href: "/", label: "Home", icon: LayoutDashboard },
+      { href: "/daily", label: "Logs", icon: CalendarDays },
+      { href: "/reports", label: "Reports", icon: Sparkles },
+      { href: "/doubts", label: "Doubts", icon: HelpCircle },
+      { href: "/alerts", label: "Alerts", icon: Siren },
+    ];
+  }
+  // Admin — same mobile shell as guardian (plan/subjects on desktop sidebar).
   return [
     { href: "/", label: "Home", icon: LayoutDashboard },
     { href: "/daily", label: "Logs", icon: CalendarDays },
+    { href: "/reports", label: "Reports", icon: Sparkles },
     { href: "/doubts", label: "Doubts", icon: HelpCircle },
-    { href: "/tests", label: "Tests", icon: ClipboardList },
     { href: "/alerts", label: "Alerts", icon: Siren },
   ];
 }

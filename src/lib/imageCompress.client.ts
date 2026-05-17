@@ -3,7 +3,27 @@
 const MAX_EDGE = 1600;
 const JPEG_QUALITY = 0.82;
 
+/** iOS often sends HEIC with an empty MIME type — normalize before upload. */
+export function normalizeImageFile(file: File): File {
+  if (file.type && file.type.startsWith("image/")) return file;
+  const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+  const mime =
+    ext === "png"
+      ? "image/png"
+      : ext === "webp"
+        ? "image/webp"
+        : ext === "gif"
+          ? "image/gif"
+          : ext === "heic" || ext === "heif"
+            ? "image/heic"
+            : "image/jpeg";
+  const base = file.name.replace(/\.[^.]+$/, "") || "photo";
+  const suffix = ext && ext !== "jpg" && ext !== "jpeg" ? `.${ext}` : ".jpg";
+  return new File([file], base + suffix, { type: mime });
+}
+
 export async function compressImageFile(file: File): Promise<File> {
+  file = normalizeImageFile(file);
   if (!file.type.startsWith("image/") || file.type === "image/gif") {
     return file;
   }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import Image from "next/image";
 import {
   Camera,
@@ -15,14 +16,17 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { compressImageFile } from "@/lib/imageCompress.client";
+import {
+  compressImageFile,
+  normalizeImageFile,
+} from "@/lib/imageCompress.client";
+import { postAiDoubtAnswer } from "@/lib/aiDoubt.client";
 import { SubjectPill } from "@/components/SubjectPill";
 import { fmtDate, fmtDateTime } from "@/lib/utils";
 import {
   clearAiDoubtAnswer,
   createDoubt,
   deleteDoubt,
-  getAiDoubtAnswer,
   markDoubtResolvedByAi,
   reopenDoubt,
   resolveDoubt,
@@ -61,6 +65,7 @@ export function DoubtsView({
   canDelete: boolean;
 }) {
   const [filter, setFilter] = useState<"open" | "resolved" | "all">("open");
+  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -80,7 +85,7 @@ export function DoubtsView({
       return;
     }
     setFormError(null);
-    const compressed = await compressImageFile(f);
+    const compressed = await compressImageFile(normalizeImageFile(f));
     if (imagePreview) URL.revokeObjectURL(imagePreview);
     setImageFile(compressed);
     setImagePreview(URL.createObjectURL(compressed));
@@ -113,8 +118,9 @@ export function DoubtsView({
         form.reset();
         clearImage();
         if (geminiConfigured) {
-          const ai = await getAiDoubtAnswer(id);
+          const ai = await postAiDoubtAnswer(id);
           if (!ai.ok) setFormError(ai.error);
+          else router.refresh();
         }
       } catch (err) {
         setFormError(err instanceof Error ? err.message : "Could not add doubt.");
@@ -293,10 +299,13 @@ function DoubtRow({
   geminiConfigured: boolean;
   canDelete: boolean;
 }) {
+  const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(!!d.aiAnswer);
   const [imgOpen, setImgOpen] = useState(false);
+  const [aiAnswer, setAiAnswer] = useState(d.aiAnswer);
+  const [aiConfident, setAiConfident] = useState(d.aiConfident);
 
   return (
     <div className="card p-4">
@@ -347,27 +356,30 @@ function DoubtRow({
               onClick={() => {
                 setError(null);
                 start(async () => {
-                  const res = await getAiDoubtAnswer(d.id);
+                  const res = await postAiDoubtAnswer(d.id);
                   if (!res.ok) {
                     setError(res.error);
                     return;
                   }
+                  setAiAnswer(res.answer);
+                  setAiConfident(res.confident);
                   setOpen(true);
+                  router.refresh();
                 });
               }}
               className="btn-ghost text-xs min-h-[40px] px-2.5"
-              title={d.aiAnswer ? "Re-ask AI" : "Get a first-pass AI answer"}
+              title={aiAnswer ? "Re-ask AI" : "Get a first-pass AI answer"}
             >
               {pending ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
               ) : (
                 <Sparkles className="w-3.5 h-3.5 text-accent" />
               )}
-              {d.aiAnswer ? "Re-ask AI" : "Ask AI"}
+              {aiAnswer ? "Re-ask AI" : "Ask AI"}
             </button>
           )}
           {d.status === "open" ? (
-            <ResolveMenu id={d.id} hasAiAnswer={!!d.aiAnswer} />
+            <ResolveMenu id={d.id} hasAiAnswer={!!aiAnswer} />
           ) : (
             <ReopenButton id={d.id} />
           )}
@@ -381,7 +393,7 @@ function DoubtRow({
         </div>
       )}
 
-      {d.aiAnswer && (
+      {aiAnswer && (
         <div className="mt-3 border-t border-border-soft pt-3">
           <button
             type="button"
@@ -390,7 +402,7 @@ function DoubtRow({
           >
             <Sparkles className="w-3.5 h-3.5" />
             AI first-pass
-            {d.aiConfident === false && (
+            {aiConfident === false && (
               <span className="chip text-[10px] text-warn border-warn/40 bg-warn/10">
                 low confidence
               </span>
@@ -405,7 +417,7 @@ function DoubtRow({
           {open && (
             <>
               <div className="mt-2 text-sm whitespace-pre-line leading-relaxed bg-bg-soft border border-border-soft rounded-lg p-3 text-ink-dim">
-                {d.aiAnswer}
+                {aiAnswer}
               </div>
               <div className="mt-2 flex items-center gap-2 flex-wrap">
                 <button

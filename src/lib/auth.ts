@@ -13,22 +13,25 @@ export const ALL_ROLES: Role[] = ["student", "guardian", "admin"];
 
 export const ROLE_META: Record<
   Role,
-  { label: string; subtitle: string; tone: string }
+  { label: string; subtitle: string; tone: string; initial: string }
 > = {
   student: {
     label: "Brother",
     subtitle: "Log study, add evidence, write reflection",
     tone: "text-physics",
+    initial: "B",
   },
   guardian: {
     label: "Father",
     subtitle: "View progress, read reports",
     tone: "text-good",
+    initial: "F",
   },
   admin: {
     label: "Admin (you)",
     subtitle: "Everything — edit, delete, configure",
     tone: "text-accent",
+    initial: "A",
   },
 };
 

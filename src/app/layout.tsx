@@ -1,7 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { AppHeader } from "@/components/AppHeader";
-import { prisma } from "@/lib/db";
 import { currentRole } from "@/lib/session";
 
 export const metadata: Metadata = {
@@ -32,17 +31,13 @@ export default async function RootLayout({
   children: React.ReactNode;
 }) {
   const role = await currentRole();
-  const student = role ? await prisma.student.findFirst() : null;
 
   return (
     <html lang="en">
       <body className="min-h-screen bg-bg text-ink">
         {role ? (
           <div className="min-h-screen flex flex-col">
-            <AppHeader
-              studentName={student?.name ?? "Bro"}
-              role={role}
-            />
+            <AppHeader role={role} />
             <main className="flex-1 px-4 sm:px-6 lg:px-10 py-6 max-w-[1400px] w-full mx-auto">
               {children}
             </main>

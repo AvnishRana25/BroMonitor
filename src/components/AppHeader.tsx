@@ -3,19 +3,31 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTransition } from "react";
-import { ChevronLeft, GraduationCap, Lock } from "lucide-react";
+import { ChevronLeft, Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ROLE_META, Role } from "@/lib/auth";
 import { pageMetaForPath } from "@/lib/navigation";
 import { lock } from "@/app/unlock/actions";
 
-export function AppHeader({
-  studentName,
-  role,
-}: {
-  studentName: string;
-  role: Role;
-}) {
+function RoleAvatar({ role }: { role: Role }) {
+  const meta = ROLE_META[role];
+  return (
+    <div
+      className={cn(
+        "w-9 h-9 rounded-full flex items-center justify-center text-sm font-semibold shrink-0",
+        role === "student" && "bg-physics/20 text-physics",
+        role === "guardian" && "bg-good/20 text-good",
+        role === "admin" && "bg-accent/20 text-accent",
+      )}
+      title={meta.label}
+      aria-label={meta.label}
+    >
+      {meta.initial}
+    </div>
+  );
+}
+
+export function AppHeader({ role }: { role: Role }) {
   const pathname = usePathname();
   const [pending, start] = useTransition();
   const meta = ROLE_META[role];
@@ -27,9 +39,7 @@ export function AppHeader({
       <div className="px-4 sm:px-6 lg:px-10 py-3 sm:py-4 flex items-center gap-3 max-w-[1400px] w-full mx-auto">
         {isHome ? (
           <div className="flex items-center gap-2.5 min-w-0 flex-1">
-            <div className="w-9 h-9 rounded-lg bg-accent/20 flex items-center justify-center shrink-0">
-              <GraduationCap className="w-5 h-5 text-accent" />
-            </div>
+            <RoleAvatar role={role} />
             <div className="min-w-0">
               <h1 className="text-base sm:text-lg font-semibold tracking-tight">
                 BroMonitor
@@ -67,17 +77,14 @@ export function AppHeader({
         <div className="flex items-center gap-2 shrink-0">
           {!isHome && (
             <div className="text-right hidden sm:block">
-              <div className={cn("text-sm font-medium leading-tight", meta.tone)}>
+              <div
+                className={cn("text-sm font-medium leading-tight", meta.tone)}
+              >
                 {meta.label}
               </div>
             </div>
           )}
-          <div
-            className="w-9 h-9 rounded-full bg-accent/20 text-accent flex items-center justify-center text-sm font-semibold"
-            title={`Tracking ${studentName}`}
-          >
-            {studentName?.[0]?.toUpperCase() ?? "B"}
-          </div>
+          {!isHome && <RoleAvatar role={role} />}
           <button
             type="button"
             disabled={pending}

@@ -1,5 +1,7 @@
 # BroMonitor
 
+GitHub: https://github.com/AvnishRana25/BroMonitor
+
 A study tracker for one Class 11 brother and his father. Single household, three roles (`student`, `guardian`, `admin`), no SaaS scaffolding, deploys to Vercel.
 
 ## What it tracks
